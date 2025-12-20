@@ -209,3 +209,56 @@ __marimo__/
 node_modules/
 
 .vscode/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+
+# --- JS / Vite (silkpath/web) ---
+
+# Node
+node_modules/
+
+# Vite cache и сборки
+.vite/
+dist/
+dist-ssr/
+
+# Локальные env-файлы фронта (если появятся)
+web/.env
+web/.env.local
+web/.env.*.local
+
+# Логи
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor / OS (часть уже есть, но оставим явную привязку)
+web/.vscode/*
+!.vscode/extensions.json
+web/.idea
+web/.DS_Store

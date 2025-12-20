@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{
+  --sf-blue-950:#071426;
+  --sf-blue-900:#0B1F3B;
+  --sf-blue-800:#0F2D55;
+  --sf-teal-600:#0EA5A2;
+  --sf-green-600:#16A34A;
+  --sf-orange-500:#F97316;
+  --sf-gray-25:#FBFCFE;
+  --sf-gray-50:#F8FAFC;
+  --sf-gray-100:#F1F5F9;
+  --sf-gray-200:#E2E8F0;
+  --sf-gray-400:#94A3B8;
+  --sf-gray-600:#475569;
+  --sf-gray-800:#1F2937;
+}
+
+html, body { height: 100%; }
+body {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: var(--sf-gray-50);
+}
+
+.sf-card{
+  box-shadow: 0 1px 0 rgba(15,23,42,.04), 0 10px 30px rgba(2,6,23,.06);
+}
+.sf-grid-bg{
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(148,163,184,.25) 1px, transparent 0);
+  background-size: 18px 18px;
+}
+.sf-scrollbar::-webkit-scrollbar{ width: 10px; }
+.sf-scrollbar::-webkit-scrollbar-thumb{
+  background: rgba(148,163,184,.45);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.sf-scrollbar::-webkit-scrollbar-track{ background: transparent; }
+.sf-animate-pulse-soft{ animation: pulseSoft 2.2s ease-in-out infinite; }
+@keyframes pulseSoft { 0%,100%{ opacity: .65; } 50%{ opacity: 1; } }
+.sf-fade-in{ animation: fadeIn .18s ease-out both; }
+@keyframes fadeIn{ from{ opacity:0; transform: translateY(6px);} to{ opacity:1; transform:none; } }
+.sf-number{ font-variant-numeric: tabular-nums; }
