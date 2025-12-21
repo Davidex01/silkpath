@@ -11,6 +11,7 @@ from app.schemas.orgs import (
     OrganizationRole,
     KYBProfile,
     KYBSubmitRequest,
+    KybStatus,
 )
 
 from app.services import auth as auth_service
@@ -81,3 +82,17 @@ def submit_my_kyb(payload: KYBSubmitRequest):
     _, org = _get_first_user_and_org()
     profile = orgs_service.submit_kyb(org.id, payload)
     return profile
+
+@router.get("/suppliers", response_model=list[Organization])
+def list_suppliers():
+    """
+    Return organizations that can act as suppliers.
+    MVP: all orgs with role == supplier or both.
+    Later we can filter by kybStatus == verified.
+    """
+    # Берём все организации из auth_service.orgs
+    orgs = []
+    for org in auth_service.orgs.values():
+        if org.role in (OrganizationRole.supplier, OrganizationRole.both):
+            orgs.append(org)
+    return orgs
