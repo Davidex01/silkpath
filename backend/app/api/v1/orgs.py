@@ -6,8 +6,15 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.schemas.orgs import Organization, OrganizationRole
+from app.schemas.orgs import (
+    Organization,
+    OrganizationRole,
+    KYBProfile,
+    KYBSubmitRequest,
+)
+
 from app.services import auth as auth_service
+from app.services import orgs as orgs_service
 
 router = APIRouter(prefix="/orgs", tags=["Organization"])
 
@@ -55,3 +62,22 @@ def update_my_org(payload: OrgUpdateRequest):
   new_org = Organization(**updated_data)
   auth_service.orgs[new_org.id] = new_org
   return new_org
+
+@router.get("/me/compliance", response_model=KYBProfile)
+def get_my_kyb_profile():
+    """
+    Return KYB profile for current user's organization (create if missing).
+    """
+    _, org = _get_first_user_and_org()
+    profile = orgs_service.get_or_create_kyb_profile(org.id)
+    return profile
+
+
+@router.post("/me/compliance", response_model=KYBProfile)
+def submit_my_kyb(payload: KYBSubmitRequest):
+    """
+    Submit/update KYB info for current user's organization.
+    """
+    _, org = _get_first_user_and_org()
+    profile = orgs_service.submit_kyb(org.id, payload)
+    return profile
