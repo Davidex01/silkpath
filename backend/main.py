@@ -1,1 +1,1 @@
-from app.main import app  # הכÿ סמגלוסעטלמסעט ס uvicorn backend.main:app
+from app.main import app
