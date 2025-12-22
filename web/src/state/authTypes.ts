@@ -23,12 +23,3 @@ export interface AuthState {
   org: BackendOrg;
   tokens: BackendTokens;
 }
-
-interface Org {
-  id: string;
-  name: string;
-  country: string;
-  role: 'buyer' | 'supplier' | 'both';
-  kybStatus: 'not_started' | 'pending' | 'verified' | 'rejected';
-  createdAt: string;
-}
