@@ -18,6 +18,7 @@ from app.schemas.rfq_deals import (
     Deal,
     DealStatus,
     DealAggregatedView,
+    DealLogisticsState,
     OfferItem,
     OrderItem,
 )
@@ -180,6 +181,11 @@ def accept_offer(offer_id: str) -> Optional[tuple[Offer, Order, Deal]]:
         status=DealStatus.ordered,
         mainCurrency=offer.currency,
         summary=None,
+        logistics=DealLogisticsState(
+            current="Production",
+            delivered=False,
+            deliveredAt=None,
+        ),
     )
     deals[deal_id] = deal
 

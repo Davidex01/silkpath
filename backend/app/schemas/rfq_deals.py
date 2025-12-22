@@ -115,6 +115,10 @@ class Order(BaseModel):
     totalAmount: float
     createdAt: datetime
 
+class DealLogisticsState(BaseModel):
+    current: str
+    delivered: bool
+    deliveredAt: Optional[datetime] = None
 
 # === Deal ===
 
@@ -133,8 +137,8 @@ class Deal(BaseModel):
     orderId: str
     status: DealStatus
     mainCurrency: CurrencyCode
-    summary: Optional[dict] = None  # reserved for analytics, unit econ, etc.
-
+    summary: Optional[dict] = None
+    logistics: Optional[DealLogisticsState] = None
 
 class DealAggregatedView(BaseModel):
     deal: Deal
