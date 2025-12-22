@@ -5,7 +5,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services import auth, orgs, products, rfq_deals, wallets_fx, files as files_service, documents as docs_service
+from app.services import (
+    auth,
+    orgs,
+    products,
+    rfq_deals,
+    wallets_fx,
+    files as files_service,
+    documents as docs_service,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -34,13 +42,8 @@ def reset_state():
     docs_service.documents.clear()
 
     yield
-    # nothing after test
-    # (если потом появятся глобальные ресурсы, можно закрывать здесь)
 
 
 @pytest.fixture
 def client() -> TestClient:
-    """
-    FastAPI TestClient for API tests.
-    """
     return TestClient(app)

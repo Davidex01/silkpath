@@ -1,7 +1,7 @@
 # app/services/wallets_fx.py
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 from uuid import uuid4
 
@@ -16,14 +16,13 @@ from app.schemas.wallet_fx_payments import (
 )
 from app.schemas.products import CurrencyCode
 from app.schemas.rfq_deals import DealStatus
-
 from app.services import auth as auth_service
 from app.services import rfq_deals as deals_service
 
 
-wallets: Dict[str, Wallet] = {}        # walletId -> Wallet
-payments: Dict[str, Payment] = {}      # paymentId -> Payment
-fx_quotes: Dict[str, FXQuoteResponse] = {}  # quoteId -> FXQuoteResponse
+wallets: Dict[str, Wallet] = {}
+payments: Dict[str, Payment] = {}
+fx_quotes: Dict[str, FXQuoteResponse] = {}
 
 
 def _now() -> datetime:
@@ -34,7 +33,7 @@ def _ensure_wallet(org_id: str, currency: CurrencyCode) -> Wallet:
     for w in wallets.values():
         if w.orgId == org_id and w.currency == currency:
             return w
-    # Create new wallet with demo balance for RUB, 0 for CNY
+    # Create new wallet with demo balance
     initial_balance = 1_000_000.0 if currency == CurrencyCode.RUB else 0.0
     wallet = Wallet(
         id=str(uuid4()),
@@ -51,17 +50,14 @@ def _ensure_wallet(org_id: str, currency: CurrencyCode) -> Wallet:
 def list_wallets_for_org(org_id: Optional[str] = None) -> List[Wallet]:
     if org_id is None:
         return list(wallets.values())
-    result: List[Wallet] = []
-    for w in wallets.values():
-        if w.orgId == org_id:
-            result.append(w)
-    return result
+    return [w for w in wallets.values() if w.orgId == org_id]
 
 
 # === FX ===
 
+
 def get_fx_rates(base: CurrencyCode) -> FXRatesResponse:
-    # MVP static rates: 1 RUB = 0.075 CNY, 1 RUB = 0.01 USD (example)
+    # MVP static rates
     if base == CurrencyCode.RUB:
         rates = {"CNY": 0.075, "USD": 0.01}
     elif base == CurrencyCode.CNY:
@@ -73,12 +69,8 @@ def get_fx_rates(base: CurrencyCode) -> FXRatesResponse:
 
 def create_fx_quote(payload: FXQuoteRequest) -> FXQuoteResponse:
     rates = get_fx_rates(payload.fromCurrency)
-    # If specific target given, use it; otherwise default
     target = payload.toCurrency.value
-    rate = rates.rates.get(target)
-    if rate is None:
-        # Fallback if not found: 1:1
-        rate = 1.0
+    rate = rates.rates.get(target, 1.0)
     quote = FXQuoteResponse(
         quoteId=str(uuid4()),
         fromCurrency=payload.fromCurrency,
@@ -92,15 +84,12 @@ def create_fx_quote(payload: FXQuoteRequest) -> FXQuoteResponse:
 
 # === Payments / Escrow demo ===
 
-def create_payment(
-    current_org_id: str,
-    payload: PaymentCreateRequest,
-) -> Payment:
+
+def create_payment(current_org_id: str, payload: PaymentCreateRequest) -> Payment:
     deal = deals_service.deals.get(payload.dealId)
     if not deal:
         raise ValueError("deal_not_found")
 
-    # For MVP: assume current org is payer, and counterparty is the other side of deal
     rfq = deals_service.rfqs.get(deal.rfqId)
     if not rfq:
         raise ValueError("rfq_not_found")
@@ -113,14 +102,13 @@ def create_payment(
 
     # Ensure wallets
     payer_wallet = _ensure_wallet(payer_org_id, payload.currency)
-    payee_wallet = _ensure_wallet(payee_org_id, payload.currency)
+    _ = _ensure_wallet(payee_org_id, payload.currency)  # ensure exists
 
     # Check balance
     if payer_wallet.balance < payload.amount:
         raise ValueError("insufficient_funds")
 
-    # FX quote is not applied to balances in MVP, but we keep its id
-    # Deduct from payer balance and move to blockedAmount (escrow)
+    # Move from available balance to blockedAmount (escrow)
     payer_wallet.balance -= payload.amount
     payer_wallet.blockedAmount += payload.amount
     wallets[payer_wallet.id] = payer_wallet
@@ -133,17 +121,55 @@ def create_payment(
         payeeOrgId=payee_org_id,
         amount=payload.amount,
         currency=payload.currency,
-        status=PaymentStatus.completed,
+        status=PaymentStatus.pending,
         fxQuoteId=payload.fxQuoteId,
         createdAt=_now(),
-        completedAt=_now(),
+        completedAt=None,
         failureReason=None,
     )
     payments[payment_id] = payment
 
-    # Update deal status to reflect partial payment (MVP)
+    # Update deal status to reflect partial payment (deposit to escrow)
     deal.status = DealStatus.paid_partially
     deals_service.deals[deal.id] = deal
+
+    return payment
+
+
+def release_payment(payment_id: str) -> Payment:
+    """
+    Release funds from escrow to payee.
+    """
+    payment = payments.get(payment_id)
+    if not payment:
+        raise ValueError("payment_not_found")
+
+    if payment.status != PaymentStatus.pending:
+        raise ValueError("invalid_payment_status")
+
+    # Fetch wallets
+    payer_wallet = _ensure_wallet(payment.payerOrgId, payment.currency)
+    payee_wallet = _ensure_wallet(payment.payeeOrgId, payment.currency)
+
+    if payer_wallet.blockedAmount < payment.amount:
+        raise ValueError("insufficient_blocked")
+
+    # Move from blocked to payee balance
+    payer_wallet.blockedAmount -= payment.amount
+    wallets[payer_wallet.id] = payer_wallet
+
+    payee_wallet.balance += payment.amount
+    wallets[payee_wallet.id] = payee_wallet
+
+    payment.status = PaymentStatus.completed
+    payment.completedAt = _now()
+    payments[payment.id] = payment
+
+    # Mark deal as fully paid (MVP)
+    deal = deals_service.deals.get(payment.dealId)
+    if deal:
+        deal.status = DealStatus.paid
+        deals_service.deals[deal.id] = deal
 
     return payment
 
@@ -164,7 +190,6 @@ def list_payments(
             continue
         if status and p.status != status:
             continue
-        # if no role specified, include both
         result.append(p)
     return result
 

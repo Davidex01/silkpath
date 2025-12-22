@@ -10,34 +10,40 @@ from .orgs import Organization, OrganizationRole
 
 
 class User(BaseModel):
-  id: str
-  email: EmailStr
-  name: str
-  phone: Optional[str] = None
-  orgId: Optional[str] = None
-  createdAt: datetime
+    id: str
+    email: EmailStr
+    name: str
+    phone: Optional[str] = None
+    orgId: Optional[str] = None
+    createdAt: datetime
 
 
 class AuthRegisterRequest(BaseModel):
-  email: EmailStr
-  password: str  # MVP: без сложной валидации
-  name: str
-  orgName: str
-  orgCountry: str
-  orgRole: OrganizationRole
+    email: EmailStr
+    password: str
+    name: str
+    orgName: str
+    orgCountry: str
+    orgRole: OrganizationRole
 
 
 class AuthLoginRequest(BaseModel):
-  email: EmailStr
-  password: str
+    email: EmailStr
+    password: str
 
 
 class AuthTokens(BaseModel):
-  accessToken: str
-  refreshToken: str
-  expiresIn: int
+    accessToken: str
+    refreshToken: str
+    expiresIn: int
 
 
 class AuthMeResponse(BaseModel):
-  user: User
-  org: Organization
+    user: User
+    org: Organization
+
+
+class AuthResponse(BaseModel):
+    user: User
+    org: Organization
+    tokens: AuthTokens

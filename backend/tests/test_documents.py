@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 
-def _create_deal(client: TestClient) -> str:
+def _create_deal(client: TestClient) -> tuple[str, dict]:
     # Register org+user
     r = client.post("/auth/register", json={
         "email": "docs@example.com",
@@ -15,7 +15,10 @@ def _create_deal(client: TestClient) -> str:
         "orgRole": "both"
     })
     assert r.status_code == 201
-    org_id = r.json()["org"]["id"]
+    data = r.json()
+    token = data["tokens"]["accessToken"]
+    headers = {"Authorization": f"Bearer {token}"}
+    org_id = data["org"]["id"]
 
     # Create RFQ
     r = client.post("/rfqs", json={
@@ -30,12 +33,12 @@ def _create_deal(client: TestClient) -> str:
                 "notes": "docs-test"
             }
         ]
-    })
+    }, headers=headers)
     assert r.status_code == 201
     rfq_id = r.json()["id"]
 
     # Send RFQ
-    r = client.post(f"/rfqs/{rfq_id}/send")
+    r = client.post(f"/rfqs/{rfq_id}/send", headers=headers)
     assert r.status_code == 200
 
     # Create offer
@@ -55,21 +58,21 @@ def _create_deal(client: TestClient) -> str:
         "incoterms": "FOB Shenzhen",
         "paymentTerms": "100% prepayment",
         "validUntil": None
-    })
+    }, headers=headers)
     assert r.status_code == 201
     offer_id = r.json()["id"]
 
     # Accept offer -> get deal
-    r = client.post(f"/offers/{offer_id}/accept")
+    r = client.post(f"/offers/{offer_id}/accept", headers=headers)
     assert r.status_code == 200
     deal_id = r.json()["deal"]["id"]
-    return deal_id
+    return deal_id, headers
 
 
 def test_deal_documents_flow(client: TestClient):
-    deal_id = _create_deal(client)
+    deal_id, headers = _create_deal(client)
 
-    # Upload file to link as document
+    # Upload file to link as document (no auth needed in MVP)
     files = {"file": ("contract.pdf", b"fake pdf content", "application/pdf")}
     r = client.post("/files", files=files)
     assert r.status_code == 201
@@ -80,7 +83,7 @@ def test_deal_documents_flow(client: TestClient):
         "type": "contract",
         "title": "Main contract v1",
         "fileId": file_id
-    })
+    }, headers=headers)
     assert r.status_code == 201
     doc = r.json()
     doc_id = doc["id"]
@@ -89,24 +92,24 @@ def test_deal_documents_flow(client: TestClient):
     assert doc["fileId"] == file_id
 
     # List documents for deal
-    r = client.get(f"/deals/{deal_id}/documents")
+    r = client.get(f"/deals/{deal_id}/documents", headers=headers)
     assert r.status_code == 200
     docs = r.json()
     assert len(docs) == 1
     assert docs[0]["id"] == doc_id
 
     # Get document by id
-    r = client.get(f"/documents/{doc_id}")
+    r = client.get(f"/documents/{doc_id}", headers=headers)
     assert r.status_code == 200
     got = r.json()
     assert got["id"] == doc_id
     assert got["dealId"] == deal_id
 
     # Delete document
-    r = client.delete(f"/documents/{doc_id}")
+    r = client.delete(f"/documents/{doc_id}", headers=headers)
     assert r.status_code == 204
 
     # Check that list for deal is now empty
-    r = client.get(f"/deals/{deal_id}/documents")
+    r = client.get(f"/deals/{deal_id}/documents", headers=headers)
     assert r.status_code == 200
     assert r.json() == []

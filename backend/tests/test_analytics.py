@@ -5,9 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-def _create_deal(client: TestClient) -> str:
+def _create_deal(client: TestClient) -> tuple[str, dict]:
     """
-    Helper: register org, create RFQ, offer, accept -> return dealId.
+    Helper: register org, create RFQ, offer, accept -> return (dealId, headers).
     Revenue (order.totalAmount) will be 1000 for easier math.
     """
     # Register
@@ -20,7 +20,10 @@ def _create_deal(client: TestClient) -> str:
         "orgRole": "both"
     })
     assert r.status_code == 201
-    org_id = r.json()["org"]["id"]
+    data = r.json()
+    token = data["tokens"]["accessToken"]
+    headers = {"Authorization": f"Bearer {token}"}
+    org_id = data["org"]["id"]
 
     # Create RFQ
     r = client.post("/rfqs", json={
@@ -35,12 +38,12 @@ def _create_deal(client: TestClient) -> str:
                 "notes": "analytics-test"
             }
         ]
-    })
+    }, headers=headers)
     assert r.status_code == 201
     rfq_id = r.json()["id"]
 
     # Send RFQ
-    r = client.post(f"/rfqs/{rfq_id}/send")
+    r = client.post(f"/rfqs/{rfq_id}/send", headers=headers)
     assert r.status_code == 200
 
     # Create offer: price * qty = 1000
@@ -60,22 +63,21 @@ def _create_deal(client: TestClient) -> str:
         "incoterms": "FOB Shenzhen",
         "paymentTerms": "100% prepayment",
         "validUntil": None
-    })
+    }, headers=headers)
     assert r.status_code == 201
     offer_id = r.json()["id"]
 
     # Accept offer -> get deal
-    r = client.post(f"/offers/{offer_id}/accept")
+    r = client.post(f"/offers/{offer_id}/accept", headers=headers)
     assert r.status_code == 200
     deal_id = r.json()["deal"]["id"]
-    # For this test we don't care about payments
-    return deal_id
+    return deal_id, headers
 
 
 def test_deal_unit_economics(client: TestClient):
-    deal_id = _create_deal(client)
+    deal_id, headers = _create_deal(client)
 
-    r = client.get(f"/analytics/deals/{deal_id}/unit-economics")
+    r = client.get(f"/analytics/deals/{deal_id}/unit-economics", headers=headers)
     assert r.status_code == 200
     data = r.json()
 
@@ -84,12 +86,6 @@ def test_deal_unit_economics(client: TestClient):
     assert data["revenue"] == pytest.approx(1000.0)
 
     cbd = data["costBreakdown"]
-    # Based on shares in analytics service:
-    # productCost = 0.7 * revenue
-    # logisticsCost = 0.1 * revenue
-    # dutiesTaxes = 0.05 * revenue
-    # fxCost = 0.02 * revenue
-    # commissions = 0.01 * revenue
     assert cbd["productCost"] == pytest.approx(700.0)
     assert cbd["logisticsCost"] == pytest.approx(100.0)
     assert cbd["dutiesTaxes"] == pytest.approx(50.0)
@@ -97,7 +93,6 @@ def test_deal_unit_economics(client: TestClient):
     assert cbd["commissions"] == pytest.approx(10.0)
     assert cbd["otherCost"] == pytest.approx(0.0)
 
-    # Total cost = 880, margin = 120, margin % = 12%
     assert data["totalCost"] == pytest.approx(880.0)
     assert data["grossMarginAbs"] == pytest.approx(120.0)
     assert data["grossMarginPct"] == pytest.approx(12.0, rel=1e-3)
