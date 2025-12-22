@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services import auth, orgs, products, rfq_deals, wallets_fx, files as files_service
+from app.services import auth, orgs, products, rfq_deals, wallets_fx, files as files_service, documents as docs_service
 
 
 @pytest.fixture(autouse=True)
@@ -31,6 +31,7 @@ def reset_state():
     wallets_fx.fx_quotes.clear()
 
     files_service.files.clear()
+    docs_service.documents.clear()
 
     yield
     # nothing after test

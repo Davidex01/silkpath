@@ -7,6 +7,7 @@ from app.api.v1 import products as products_routes
 from app.api.v1 import rfq_deals as rfq_deals_routes
 from app.api.v1 import wallets_fx_payments as wallets_fx_routes
 from app.api.v1 import analytics as analytics_routes
+from app.api.v1 import documents as documents_routes
 
 app = FastAPI(
     title="SilkFlow API",
@@ -27,3 +28,4 @@ app.include_router(products_routes.router)
 app.include_router(rfq_deals_routes.router)
 app.include_router(wallets_fx_routes.router)  
 app.include_router(analytics_routes.router) 
+app.include_router(documents_routes.router) 
