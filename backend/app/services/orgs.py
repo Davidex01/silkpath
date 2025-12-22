@@ -1,7 +1,7 @@
 # app/services/orgs.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
 from uuid import uuid4
 
@@ -18,7 +18,7 @@ kyb_profiles: Dict[str, KYBProfile] = {}
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def get_or_create_kyb_profile(org_id: str) -> KYBProfile:

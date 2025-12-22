@@ -1,7 +1,7 @@
 # app/services/rfq_deals.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
 
@@ -31,7 +31,7 @@ deals: Dict[str, Deal] = {}
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 # === RFQ ===

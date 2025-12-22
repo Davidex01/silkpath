@@ -1,7 +1,7 @@
 # app/services/files.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
 from uuid import uuid4
 
@@ -13,7 +13,7 @@ files: Dict[str, File] = {}
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 async def save_upload(upload: UploadFile) -> File:

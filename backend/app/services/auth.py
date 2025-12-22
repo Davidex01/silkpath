@@ -1,7 +1,7 @@
 # app/services/auth.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Tuple
 from uuid import uuid4
 
@@ -16,7 +16,7 @@ passwords: Dict[str, str] = {}  # userId -> plain password (MVP)
 
 
 def _now() -> datetime:
-  return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def register(data: AuthRegisterRequest) -> Tuple[User, Organization, dict]:
