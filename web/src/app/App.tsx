@@ -1,6 +1,4 @@
-// src/app/App.tsx
 import React, { useEffect, useMemo, useState } from 'react';
-import { OnboardingView } from '../modules/onboarding/OnboardingView';
 import { Sidebar, type ActiveView } from '../components/layout/Sidebar';
 import { TopHeader } from '../components/layout/TopHeader';
 import { createInitialDeal } from '../state/createInitialDeal';
@@ -17,8 +15,16 @@ import { WalletView } from '../modules/wallet/WalletView';
 import { DocumentsView } from '../modules/documents/DocumentsView';
 import { SupplierProfileDrawer } from '../modules/suppliers/SupplierProfileDrawer';
 import { clamp } from '../components/lib/clamp';
+import { OnboardingLanding } from '../modules/onboarding/OnboardingLanding';
+import { RegisterView } from '../modules/auth/RegisterView';
+import { LoginView } from '../modules/auth/LoginView';
+import { saveAuthEncrypted, loadAuthEncrypted, clearAuth } from '../state/secureSession';
+import type { AuthState, BackendOrg } from '../state/authTypes';
+import { api } from '../api/client';
 
-// Демонстрационные поставщики (как в прототипе)
+type AuthMode = 'onboarding' | 'register' | 'login' | 'app';
+
+// Пока ещё используем демо‑поставщиков (на следующих этапах заменим на /orgs/suppliers)
 const SUPPLIERS: DiscoverySupplier[] = [
   {
     id: 'shenzhen-electronics',
@@ -69,15 +75,28 @@ const fallbackId = () => {
 };
 
 const App: React.FC = () => {
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [auth, setAuth] = useState<AuthState | null>(null);
+  const [mode, setMode] = useState<AuthMode>('onboarding');
+
+  // актуальная орг‑инфо ...
+  const [org, setOrg] = useState<BackendOrg | null>(null);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [orgError, setOrgError] = useState<string | null>(null);
+
   const [active, setActive] = useState<ActiveView>('discovery');
   const [deal, setDeal] = useState<DealState>(() => createInitialDeal());
+
+  // Поставщики
+  const [suppliers, setSuppliers] = useState<DiscoverySupplier[]>(SUPPLIERS);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [suppliersError, setSuppliersError] = useState<string | null>(null);
 
   const [filters, setFilters] = useState<DiscoveryFilters>({
     verified: true,
     exportLicense: false,
     lowMOQ: false,
   });
+
   const [query, setQuery] = useState('Wireless Headphones');
   const [shortlist, setShortlist] = useState<Set<string>>(() => new Set());
 
@@ -85,9 +104,122 @@ const App: React.FC = () => {
 
   // Сайдбарный профиль поставщика
   const [profileOpen, setProfileOpen] = useState(false);
-  const [profileSupplier, setProfileSupplier] = useState<DiscoverySupplier | null>(
-    null,
-  );
+  const [profileSupplier, setProfileSupplier] =
+    useState<DiscoverySupplier | null>(null);
+
+  // ===== Helpers =====
+
+  const addToast = (input: Omit<Toast, 'id'>) => {
+    const id = fallbackId();
+    const toast: Toast = { ...input, id };
+    setToasts((prev) => [toast, ...prev].slice(0, 4));
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3600);
+  };
+
+  const handleDismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const loadOrgProfile = async (token: string) => {
+    try {
+      setOrgLoading(true);
+      setOrgError(null);
+      const data = await api<BackendOrg>('/orgs/me', {}, token);
+      setOrg(data);
+    } catch (e) {
+      console.error('Failed to fetch /orgs/me', e);
+      setOrgError('Could not load organization profile');
+      addToast({
+        tone: 'warn',
+        title: 'Backend access error',
+        message: 'Could not load organization profile (check API / auth).',
+      });
+    } finally {
+      setOrgLoading(false);
+    }
+  };
+
+  const loadSuppliers = async (token: string) => {
+    try {
+      setSuppliersLoading(true);
+      setSuppliersError(null);
+
+      // тип можно описать тут локально
+      interface OrgFromApi {
+        id: string;
+        name: string;
+        country: string;
+        role: 'buyer' | 'supplier' | 'both';
+        kybStatus: 'not_started' | 'pending' | 'verified' | 'rejected';
+        createdAt: string;
+      }
+
+      const orgs = await api<OrgFromApi[]>('/orgs/suppliers', {}, token);
+
+      // Маппим Organization -> DiscoverySupplier (гибридные данные)
+      const mapped: DiscoverySupplier[] = orgs.map((o, index) => {
+        const isCN = o.country === 'CN';
+        const baseCity = isCN ? 'Shenzhen, CN' : 'Moscow, RU';
+        const baseCategory =
+          o.role === 'supplier' || o.role === 'both'
+            ? 'General Goods'
+            : 'Services';
+
+        const rating = 4.2 + (index % 4) * 0.2;
+        const exportLicense = isCN;
+        const lowMOQ = index % 2 === 0;
+
+        return {
+          id: o.id,
+          name: o.name,
+          city: baseCity,
+          category: baseCategory,
+          rating,
+          kyb: o.kybStatus === 'verified',
+          exportLicense,
+          lowMOQ,
+          responseMins: 10 + (index % 5) * 3,
+          tags: [o.country === 'CN' ? 'CN Export' : 'RU Import', 'SilkFlow'],
+          items: ['Demo Product A', 'Demo Product B'],
+        };
+      });
+
+      if (mapped.length > 0) {
+        setSuppliers(mapped);
+      }
+    } catch (e) {
+      console.error('Failed to load suppliers', e);
+      setSuppliersError('Could not load suppliers');
+      addToast({
+        tone: 'warn',
+        title: 'Suppliers load error',
+        message: 'Could not load suppliers list. Using demo data.',
+      });
+    } finally {
+      setSuppliersLoading(false);
+    }
+  };
+
+
+  const handleAuthSuccess = async (a: AuthState) => {
+    setAuth(a);
+    setOrg(a.org);
+    setMode('app');
+    await saveAuthEncrypted(a);
+    void loadOrgProfile(a.tokens.accessToken);
+    void loadSuppliers(a.tokens.accessToken);      // ← добавили
+  };
+
+  const handleLogout = () => {
+    clearAuth();
+    setAuth(null);
+    setOrg(null);
+    setMode('onboarding');
+  };
+
+  // ===== Effects =====
 
   // FX‑тикер, как в прототипе
   useEffect(() => {
@@ -107,28 +239,38 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // восстановление авторизации из sessionStorage
+  useEffect(() => {
+    loadAuthEncrypted().then((stored) => {
+      if (stored) {
+        setAuth(stored);
+        setOrg(stored.org);
+        setMode('app');
+        void loadOrgProfile(stored.tokens.accessToken);
+        void loadSuppliers(stored.tokens.accessToken); // ← добавили
+      }
+    });
+  }, []);
+
+  // ===== Derived data =====
+
   const suppliersFiltered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return SUPPLIERS.filter((s) => {
-      if (filters.verified && !s.kyb) return false;
-      if (filters.exportLicense && !s.exportLicense) return false;
-      if (filters.lowMOQ && !s.lowMOQ) return false;
-      if (!q) return true;
-      const haystack = [s.name, s.city, s.category, ...s.items]
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(q);
-    }).sort((a, b) => b.rating - a.rating);
-  }, [filters, query]);
+    return suppliers
+      .filter((s) => {
+        if (filters.verified && !s.kyb) return false;
+        if (filters.exportLicense && !s.exportLicense) return false;
+        if (filters.lowMOQ && !s.lowMOQ) return false;
+        if (!q) return true;
+        const haystack = [s.name, s.city, s.category, ...s.items]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(q);
+      })
+      .sort((a, b) => b.rating - a.rating);
+  }, [filters, query, suppliers]);
 
-  const addToast = (input: Omit<Toast, 'id'>) => {
-    const id = fallbackId();
-    const toast: Toast = { ...input, id };
-    setToasts((prev) => [toast, ...prev].slice(0, 4));
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3600);
-  };
+  // ===== Handlers для Discovery/Deal =====
 
   const toggleShortlist = (supplier: DiscoverySupplier) => {
     setShortlist((prev) => {
@@ -138,7 +280,9 @@ const App: React.FC = () => {
       else next.add(supplier.id);
       addToast({
         tone: 'info',
-        title: exists ? 'Removed from shortlist (demo)' : 'Added to shortlist (demo)',
+        title: exists
+          ? 'Removed from shortlist (demo)'
+          : 'Added to shortlist (demo)',
         message: supplier.name,
       });
       return next;
@@ -189,23 +333,54 @@ const App: React.FC = () => {
     });
   };
 
-  const handleDismissToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  // ===== Auth-mode screens =====
 
-  if (showOnboarding) {
-    return (
-      <>
-        <OnboardingView onComplete={() => setShowOnboarding(false)} />
-        <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
-      </>
-    );
+  if (!auth) {
+    if (mode === 'onboarding') {
+      return (
+        <>
+          <OnboardingLanding onSelectMode={(m) => setMode(m)} />
+          <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
+        </>
+      );
+    }
+
+    if (mode === 'register') {
+      return (
+        <>
+          <RegisterView
+            onSuccess={handleAuthSuccess}
+            onBack={() => setMode('onboarding')}
+          />
+          <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
+        </>
+      );
+    }
+
+    if (mode === 'login') {
+      return (
+        <>
+          <LoginView
+            onSuccess={handleAuthSuccess}
+            onBack={() => setMode('onboarding')}
+          />
+          <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
+        </>
+      );
+    }
   }
+
+  // ===== Основной UI (auth есть, mode === 'app') =====
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Левый сайдбар */}
-      <Sidebar active={active} setActive={setActive} deal={deal} />
+      <Sidebar
+        active={active}
+        setActive={setActive}
+        deal={deal}
+        orgName={org?.name}
+      />
 
       {/* Правая часть: шапка + контент */}
       <div className="ml-72 min-h-screen flex flex-col">
@@ -282,6 +457,7 @@ const App: React.FC = () => {
               setDeal={setDeal}
               addToast={addToast}
               onGoLogistics={() => setActive('logistics')}
+              auth={auth!}
             />
           ) : active === 'logistics' ? (
             <LogisticsView deal={deal} setDeal={setDeal} addToast={addToast} />

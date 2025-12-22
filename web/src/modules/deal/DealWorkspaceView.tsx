@@ -1,17 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { DealState } from '../../state/dealTypes';
+import type { AuthState } from '../../state/authTypes'; 
 import { Icon } from '../../components/common/Icon';
 import { Badge } from '../../components/common/Badge';
 import { fmt } from '../../components/lib/format';
 import { clamp } from '../../components/lib/clamp';
 import { HS_CODES } from './hsCodes';
 import type { Toast } from '../../components/common/ToastStack';
+import { createDemoDeal } from '../../api/demoDeal';
+
 
 interface DealWorkspaceViewProps {
   deal: DealState;
   setDeal: React.Dispatch<React.SetStateAction<DealState>>;
   addToast: (t: Omit<Toast, 'id'>) => void;
   onGoLogistics: () => void;
+  auth: AuthState;
 }
 
 function ProgressStepper({ steps, current }: { steps: string[]; current: number }) {
@@ -113,11 +117,13 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
   setDeal,
   addToast,
   onGoLogistics,
+  auth,
 }) => {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draftText, setDraftText] = useState('');
   const [contractOpen, setContractOpen] = useState(false);
   const [fxConfirmOpen, setFxConfirmOpen] = useState(false);
+  const [linkingBackendDeal, setLinkingBackendDeal] = useState(false);
 
   const steps = ['Draft', 'Signed', 'Escrow Funded', 'Shipped'];
   const currentStep = useMemo(() => {
@@ -318,40 +324,76 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
 
   const isSignedStage = deal.stage !== 'Draft';
 
+  const handleLinkBackendDeal = async () => {
+    // если уже есть привязка — ничего не делаем
+    if (deal.backend?.dealId) {
+      addToast({
+        tone: 'info',
+        title: 'Deal already linked',
+        message: `Backend deal ID: ${deal.backend.dealId}`,
+      });
+      return;
+    }
+
+    try {
+      setLinkingBackendDeal(true);
+      const ids = await createDemoDeal(auth);
+      setDeal((prev) => ({
+        ...prev,
+        backend: ids,
+      }));
+      addToast({
+        tone: 'success',
+        title: 'Backend deal created',
+        message: `Deal ID: ${ids.dealId} (demo).`,
+      });
+    } catch (e) {
+      console.error('Failed to create/link backend deal', e);
+      addToast({
+        tone: 'warn',
+        title: 'Failed to create backend deal',
+        message: 'Please check API and try again later.',
+      });
+    } finally {
+      setLinkingBackendDeal(false);
+    }
+  };
+
   return (
     <div className="p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-slate-900 text-xl font-bold">Deal Workspace</div>
-          <div className="mt-1 text-sm text-slate-600">
-            Split-screen negotiation: chat on the left, deal engine on the right.
-          </div>
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-slate-500">Deal ID</span>
-            <span className="text-xs font-extrabold text-slate-900 sf-number">
-              {dealId}
-            </span>
-            {isSignedStage ? (
-              <Badge tone="green" icon={<Icon name="check" className="w-4 h-4" />}>
-                Signed
-              </Badge>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onGoLogistics}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Go to Logistics
-          </button>
-          <button
-            onClick={openContractPreview}
-            className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
-          >
-            Generate Contract (RFQ)
-          </button>
-        </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onGoLogistics}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Go to Logistics
+        </button>
+
+        <button
+          onClick={handleLinkBackendDeal}
+          disabled={linkingBackendDeal}
+          className={
+            'rounded-xl border px-4 py-2 text-sm font-semibold ' +
+            (deal.backend?.dealId
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : linkingBackendDeal
+              ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-wait'
+              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')
+          }
+        >
+          {deal.backend?.dealId
+            ? 'Backend Deal Linked'
+            : linkingBackendDeal
+            ? 'Linking...'
+            : 'Create & Link Backend Deal'}
+        </button>
+
+        <button
+          onClick={openContractPreview}
+          className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
+        >
+          Generate Contract (RFQ)
+        </button>
       </div>
 
       <div className="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-4">
