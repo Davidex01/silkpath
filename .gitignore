@@ -270,3 +270,5 @@ training_data.json
 
 # Swagger (опционально - можно оставить для воспроизводимости)
 # swagger/package-lock.json
+
+backend/app/data/
