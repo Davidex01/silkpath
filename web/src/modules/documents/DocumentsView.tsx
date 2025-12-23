@@ -1,9 +1,12 @@
-import React, { useMemo, useState } from 'react';
+// src/modules/documents/DocumentsView.tsx
+import React, { useMemo, useState, useEffect } from 'react';
 import type { DealState } from '../../state/dealTypes';
+import type { AuthState } from '../../state/authTypes';
 import { Badge } from '../../components/common/Badge';
 import { Icon } from '../../components/common/Icon';
 import { fmt } from '../../components/lib/format';
 import type { Toast } from '../../components/common/ToastStack';
+import { listDealDocuments } from '../../api/documents';
 
 type DocStageId = 'discovery' | 'deal' | 'logistics';
 
@@ -36,6 +39,38 @@ interface DealDocumentUI {
 interface DocumentsViewProps {
   deal: DealState;
   addToast: (t: Omit<Toast, 'id'>) => void;
+  auth: AuthState;
+}
+
+// Маппинг типов из API в DocType
+function mapDocumentType(apiType: string): DocType {
+  switch (apiType) {
+    case 'contract':
+      return 'contract';
+    case 'invoice':
+      return 'invoice';
+    case 'packing_list':
+      return 'packing';
+    case 'customs_declaration':
+      return 'customs';
+    default:
+      return 'customs'; // fallback
+  }
+}
+
+function mapDocumentLabel(apiType: string): string {
+  switch (apiType) {
+    case 'contract':
+      return 'Contract';
+    case 'invoice':
+      return 'Commercial Invoice';
+    case 'packing_list':
+      return 'Packing List';
+    case 'customs_declaration':
+      return 'Customs Document';
+    default:
+      return 'Document';
+  }
 }
 
 function DocIcon({ type, className = '' }: { type: DocType; className?: string }) {
@@ -50,17 +85,26 @@ function DocIcon({ type, className = '' }: { type: DocType; className?: string }
   return <Icon name={map[type]} className={className} />;
 }
 
-export const DocumentsView: React.FC<DocumentsViewProps> = ({ deal, addToast }) => {
+export const DocumentsView: React.FC<DocumentsViewProps> = ({
+  deal,
+  addToast,
+  auth,
+}) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DealDocumentUI | null>(null);
   const [stageFilter, setStageFilter] = useState<'all' | DocStageId>('all');
+
+  const [backendDocs, setBackendDocs] = useState<DealDocumentUI[]>([]);
+  const [loadingBackend, setLoadingBackend] = useState(false);
+  const [backendError, setBackendError] = useState<string | null>(null);
 
   const dealId = useMemo(() => {
     const s = (deal.supplier?.id || 'sf').slice(0, 6).toUpperCase();
     return `SF-${s}-0142`;
   }, [deal.supplier?.id]);
 
-  const documents: DealDocumentUI[] = useMemo(() => {
+  // Демо-документы, завязанные на состоянии сделки
+  const demoDocuments: DealDocumentUI[] = useMemo(() => {
     const isSigned = deal.stage !== 'Draft';
     const escrowFunded =
       deal.payment.status === 'Escrow Funded' ||
@@ -153,10 +197,16 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ deal, addToast }) 
     ];
   }, [deal, dealId]);
 
+  // Все документы: сначала backend, потом демо
+  const allDocuments = useMemo(
+    () => [...backendDocs, ...demoDocuments],
+    [backendDocs, demoDocuments],
+  );
+
   const filteredDocs = useMemo(() => {
-    if (stageFilter === 'all') return documents;
-    return documents.filter((d) => d.stageId === stageFilter);
-  }, [documents, stageFilter]);
+    if (stageFilter === 'all') return allDocuments;
+    return allDocuments.filter((d) => d.stageId === stageFilter);
+  }, [allDocuments, stageFilter]);
 
   const stages = [
     { id: 'all' as const, label: 'All Documents' },
@@ -178,6 +228,42 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ deal, addToast }) 
     });
   };
 
+  // Загружаем backend-документы
+  useEffect(() => {
+    const load = async () => {
+      if (!deal.backend?.dealId) return;
+
+      try {
+        setLoadingBackend(true);
+        setBackendError(null);
+
+        const docs = await listDealDocuments(auth, deal.backend.dealId);
+
+        const mapped: DealDocumentUI[] = docs.map((d) => ({
+          id: d.id,
+          type: mapDocumentType(d.type),
+          typeLabel: mapDocumentLabel(d.type),
+          name: d.title || `${d.type}_${d.id}.pdf`,
+          stage: 'Negotiation & Payment',
+          stageId: 'deal',
+          date: d.createdAt.slice(0, 10),
+          status: 'Processed',
+          statusTone: 'green',
+          description: `Backend document of type ${d.type} linked to deal.`,
+        }));
+
+        setBackendDocs(mapped);
+      } catch (e) {
+        console.error('Failed to load backend documents', e);
+        setBackendError('Could not load documents from backend');
+      } finally {
+        setLoadingBackend(false);
+      }
+    };
+
+    void load();
+  }, [auth, deal.backend?.dealId]);
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -189,6 +275,13 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ deal, addToast }) 
             deal{' '}
             <span className="font-semibold text-slate-900 sf-number">{dealId}</span>.
           </div>
+          {loadingBackend ? (
+            <div className="mt-1 text-xs text-blue-600">
+              Loading documents from backend…
+            </div>
+          ) : backendError ? (
+            <div className="mt-1 text-xs text-orange-700">{backendError}</div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -385,7 +478,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ deal, addToast }) 
             Total Documents
           </div>
           <div className="mt-1 text-lg font-extrabold text-slate-900 sf-number">
-            {documents.length}
+            {allDocuments.length}
           </div>
         </div>
         <div className="sf-card rounded-xl border border-emerald-200 bg-emerald-50 p-3">
@@ -394,7 +487,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ deal, addToast }) 
           </div>
           <div className="mt-1 text-lg font-extrabold text-emerald-900 sf-number">
             {
-              documents.filter((d) =>
+              allDocuments.filter((d) =>
                 ['Signed', 'Processed', 'Uploaded'].includes(d.status),
               ).length
             }
@@ -403,13 +496,13 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ deal, addToast }) 
         <div className="sf-card rounded-xl border border-orange-200 bg-orange-50 p-3">
           <div className="text-xs font-semibold text-orange-700">Pending</div>
           <div className="mt-1 text-lg font-extrabold text-orange-900 sf-number">
-            {documents.filter((d) => d.status === 'Pending').length}
+            {allDocuments.filter((d) => d.status === 'Pending').length}
           </div>
         </div>
         <div className="sf-card rounded-xl border border-blue-200 bg-blue-50 p-3">
           <div className="text-xs font-semibold text-blue-700">In Review</div>
           <div className="mt-1 text-lg font-extrabold text-blue-900 sf-number">
-            {documents.filter((d) => d.status === 'In Review').length}
+            {allDocuments.filter((d) => d.status === 'In Review').length}
           </div>
         </div>
       </div>

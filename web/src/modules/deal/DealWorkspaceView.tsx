@@ -9,6 +9,8 @@ import { HS_CODES } from './hsCodes';
 import type { Toast } from '../../components/common/ToastStack';
 import { loadDealSummary } from '../../api/loadDealSummary';
 import { createPayment } from '../../api/payments';
+import { createDealDocument } from '../../api/documents';
+
 
 interface DealWorkspaceViewProps {
   deal: DealState;
@@ -225,17 +227,48 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     setContractOpen(true);
   };
 
-  const signContract = () => {
+  const signContract = async () => {
     setContractOpen(false);
+
     setDeal((d) => ({
       ...d,
       stage: d.stage === 'Draft' ? 'Signed' : d.stage,
     }));
+
     addToast({
       tone: 'success',
       title: 'Contract signed (demo)',
       message: 'Deal is now in Signed stage. Next: lock FX and fund escrow.',
     });
+
+    // создание документа на бэке, если есть dealId
+    if (!deal.backend?.dealId) {
+      return;
+    }
+
+    try {
+      // Временный fileId-заглушка — бэкендер позже подставит реальный из /files
+      const fakeFileId = 'TODO-fileId-from-backend';
+
+      await createDealDocument(auth, deal.backend.dealId, {
+        type: 'contract',
+        title: `Main contract for deal ${deal.backend.dealId}`,
+        fileId: fakeFileId,
+      });
+
+      addToast({
+        tone: 'info',
+        title: 'Backend document created',
+        message: 'Contract document was registered on backend (demo).',
+      });
+    } catch (e) {
+      console.error('Failed to create backend contract document', e);
+      addToast({
+        tone: 'warn',
+        title: 'Failed to create contract document',
+        message: 'Please check documents API later.',
+      });
+    }
   };
 
   const openFxConfirm = () => {

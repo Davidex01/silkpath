@@ -533,7 +533,7 @@ const App: React.FC = () => {
               paymentsError={dealPaymentsError}
             />
           ) : active === 'documents' ? (
-            <DocumentsView deal={deal} addToast={addToast} />
+            <DocumentsView deal={deal} addToast={addToast} auth={auth!} />
           ) : null}
         </main>
 
