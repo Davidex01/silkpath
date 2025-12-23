@@ -21,6 +21,8 @@ import { LoginView } from '../modules/auth/LoginView';
 import { saveAuthEncrypted, loadAuthEncrypted, clearAuth } from '../state/secureSession';
 import type { AuthState, BackendOrg } from '../state/authTypes';
 import { api } from '../api/client';
+import { createDealForSupplier } from '../api/createDealForSupplier';
+
 
 type AuthMode = 'onboarding' | 'register' | 'login' | 'app';
 
@@ -483,6 +485,48 @@ const App: React.FC = () => {
         supplier={profileSupplier}
         onClose={() => setProfileOpen(false)}
         onStartNegotiation={handleStartNegotiation}
+        onCreateDeal={async (supplier) => {
+          if (!auth) return;
+
+          try {
+            addToast({
+              tone: 'info',
+              title: 'Creating backend deal…',
+              message: `Creating RFQ & Deal for ${supplier.name}.`,
+            });
+
+            const ids = await createDealForSupplier(auth, supplier);
+
+            // Обновляем локальный deal-состояние
+            setDeal((prev) => ({
+              ...prev,
+              supplier: {
+                id: supplier.id,
+                name: supplier.name,
+                city: supplier.city,
+                category: supplier.category,
+                rating: supplier.rating,
+              },
+              backend: ids,
+            }));
+
+            setActive('deal');
+            setProfileOpen(false);
+
+            addToast({
+              tone: 'success',
+              title: 'Deal created on backend',
+              message: `Deal ID: ${ids.dealId} (RFQ ${ids.rfqId}).`,
+            });
+          } catch (e) {
+            console.error('Failed to create backend deal', e);
+            addToast({
+              tone: 'warn',
+              title: 'Failed to create deal',
+              message: 'Please check backend API and try again.',
+            });
+          }
+        }}
       />
 
       <ToastStack toasts={toasts} onDismiss={handleDismissToast} />

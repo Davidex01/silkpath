@@ -65,4 +65,6 @@ export const createInitialDeal = (): DealState => ({
       ts: new Date().toISOString(),
     },
   ],
+
+  backend: undefined,
 });
