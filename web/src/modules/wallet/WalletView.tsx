@@ -5,13 +5,33 @@ import { Icon } from '../../components/common/Icon';
 import { fmt } from '../../components/lib/format';
 import { clamp } from '../../components/lib/clamp';
 import type { Toast } from '../../components/common/ToastStack';
+import type { Wallet } from '../../api/wallets';
+import type { Payment } from '../../api/payments';
+
 
 interface WalletViewProps {
   deal: DealState;
   addToast: (t: Omit<Toast, 'id'>) => void;
+
+  wallets: Wallet[];
+  walletsLoading?: boolean;
+  walletsError?: string | null;
+
+  payments: Payment[];
+  paymentsLoading?: boolean;
+  paymentsError?: string | null;
 }
 
-export const WalletView: React.FC<WalletViewProps> = ({ deal, addToast }) => {
+export const WalletView: React.FC<WalletViewProps> = ({ 
+  deal,
+  addToast,
+  wallets,
+  walletsLoading,
+  walletsError,
+  payments,
+  paymentsLoading,
+  paymentsError,
+}) => {
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState<number>(500_000);
@@ -19,65 +39,45 @@ export const WalletView: React.FC<WalletViewProps> = ({ deal, addToast }) => {
 
   const escrowFunded =
     deal.payment.status === 'Escrow Funded' ||
-    deal.payment.status === 'Funds Released';
-  const escrowAmountRUB = deal.payment.escrowAmountRUB || 0;
+    deal.payment.status === 'Funds Released' ||
+    payments.some((p) => p.status === 'pending');
+
+  const escrowAmountRUB =
+    deal.payment.escrowAmountRUB ||
+    payments
+      .filter((p) => p.currency === 'RUB' && p.status !== 'failed')
+      .reduce((sum, p) => sum + p.amount, 0);
   const fxRate =
     deal.fx.locked && deal.fx.lockedRate ? deal.fx.lockedRate : deal.fx.rateLive;
   const escrowAmountCNY = escrowFunded
     ? Math.round(escrowAmountRUB / fxRate)
     : 0;
 
-  // Демо-балансы — как в прототипе
-  const rubAvailable = 1_245_000;
-  const rubReserved = 85_000;
+  // Вычисляем реальные кошельки
+  const rubWallet = wallets.find((w) => w.currency === 'RUB');
+  const cnyWallet = wallets.find((w) => w.currency === 'CNY');
+
+  const rubAvailable = rubWallet?.balance ?? 0;
+  const rubReserved = rubWallet?.blockedAmount ?? 0; 
   const rubTotal = rubAvailable + rubReserved;
 
-  const cnyAvailable = 42_500;
-  const cnyInEscrow = escrowAmountCNY;
+  const cnyAvailable = cnyWallet?.balance ?? 0;
+  const cnyInEscrow = cnyWallet?.blockedAmount ?? escrowAmountCNY;
   const cnyTotal = cnyAvailable + cnyInEscrow;
 
-  const activity = [
-    {
-      date: '2025-01-15',
-      type: 'Deposit RUB',
-      amount: 500_000,
-      currency: 'RUB' as const,
-      deal: '-',
-      status: 'Completed',
-    },
-    {
-      date: '2025-01-14',
-      type: 'Conversion RUB→CNY',
-      amount: 150_000,
-      currency: 'RUB' as const,
-      deal: '-',
-      status: 'Completed',
-    },
-    {
-      date: '2025-01-12',
-      type: 'Escrow funding',
-      amount: escrowAmountRUB || 425_000,
-      currency: 'RUB' as const,
-      deal: 'SF-SHENZH-0142',
-      status: escrowFunded ? 'Completed' : 'Pending',
-    },
-    {
-      date: '2025-01-10',
-      type: 'Escrow release',
-      amount: 312_000,
-      currency: 'RUB' as const,
-      deal: 'SF-NINGBO-0098',
-      status: 'Completed',
-    },
-    {
-      date: '2025-01-08',
-      type: 'Deposit RUB',
-      amount: 750_000,
-      currency: 'RUB' as const,
-      deal: '-',
-      status: 'Completed',
-    },
-  ];
+  const activity = payments
+    .slice() // копия
+    .sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))
+    .slice(0, 5)
+    .map((p) => ({
+      date: p.createdAt.slice(0, 10),
+      type: p.status === 'completed' ? 'Escrow release' : 'Escrow funding',
+      amount: p.amount,
+      currency: p.currency,
+      deal: p.dealId,
+      status: p.status === 'completed' ? 'Completed' : 'Pending',
+    })
+  );
 
   const confirmTopUp = () => {
     setTopUpOpen(false);

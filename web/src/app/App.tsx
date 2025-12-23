@@ -22,7 +22,10 @@ import { saveAuthEncrypted, loadAuthEncrypted, clearAuth } from '../state/secure
 import type { AuthState, BackendOrg } from '../state/authTypes';
 import { api } from '../api/client';
 import { createDealForSupplier } from '../api/createDealForSupplier';
-
+import { listWallets } from '../api/wallets';
+import { listPaymentsForDeal } from '../api/payments';
+import type { Wallet } from '../api/wallets';
+import type { Payment } from '../api/payments';
 
 type AuthMode = 'onboarding' | 'register' | 'login' | 'app';
 
@@ -87,6 +90,15 @@ const App: React.FC = () => {
 
   const [active, setActive] = useState<ActiveView>('discovery');
   const [deal, setDeal] = useState<DealState>(() => createInitialDeal());
+
+  // кошелек
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [walletsLoading, setWalletsLoading] = useState(false);
+  const [walletsError, setWalletsError] = useState<string | null>(null);
+
+  const [dealPayments, setDealPayments] = useState<Payment[]>([]);
+  const [dealPaymentsLoading, setDealPaymentsLoading] = useState(false);
+  const [dealPaymentsError, setDealPaymentsError] = useState<string | null>(null);
 
   // Поставщики
   const [suppliers, setSuppliers] = useState<DiscoverySupplier[]>(SUPPLIERS);
@@ -211,7 +223,8 @@ const App: React.FC = () => {
     setMode('app');
     await saveAuthEncrypted(a);
     void loadOrgProfile(a.tokens.accessToken);
-    void loadSuppliers(a.tokens.accessToken);      // ← добавили
+    void loadSuppliers(a.tokens.accessToken);
+    void loadWallets(a);
   };
 
   const handleLogout = () => {
@@ -221,6 +234,37 @@ const App: React.FC = () => {
     setMode('onboarding');
   };
 
+  const loadWallets = async (authState: AuthState) => {
+    try {
+      setWalletsLoading(true);
+      setWalletsError(null);
+      const data = await listWallets(authState);
+      setWallets(data);
+    } catch (e) {
+      console.error('Failed to load wallets', e);
+      setWalletsError('Could not load wallets');
+    } finally {
+      setWalletsLoading(false);
+    }
+  };
+
+  const loadDealPayments = async (authState: AuthState, dealState: DealState) => {
+    if (!dealState.backend?.dealId) {
+      setDealPayments([]);
+      return;
+    }
+    try {
+      setDealPaymentsLoading(true);
+      setDealPaymentsError(null);
+      const data = await listPaymentsForDeal(authState, dealState.backend.dealId);
+      setDealPayments(data);
+    } catch (e) {
+      console.error('Failed to load deal payments', e);
+      setDealPaymentsError('Could not load payments for this deal');
+    } finally {
+      setDealPaymentsLoading(false);
+    }
+  };
   // ===== Effects =====
 
   // FX‑тикер, как в прототипе
@@ -253,6 +297,13 @@ const App: React.FC = () => {
       }
     });
   }, []);
+
+
+  useEffect(() => {
+    if (auth && deal.backend?.dealId) {
+      void loadDealPayments(auth, deal);
+    }
+  }, [auth, deal.backend?.dealId]);
 
   // ===== Derived data =====
 
@@ -466,7 +517,16 @@ const App: React.FC = () => {
           ) : active === 'logistics' ? (
             <LogisticsView deal={deal} setDeal={setDeal} addToast={addToast} />
           ) : active === 'wallet' ? (
-            <WalletView deal={deal} addToast={addToast} />
+            <WalletView
+              deal={deal}
+              addToast={addToast}
+              wallets={wallets}
+              walletsLoading={walletsLoading}
+              walletsError={walletsError}
+              payments={dealPayments}
+              paymentsLoading={dealPaymentsLoading}
+              paymentsError={dealPaymentsError}
+            />
           ) : active === 'documents' ? (
             <DocumentsView deal={deal} addToast={addToast} />
           ) : null}
