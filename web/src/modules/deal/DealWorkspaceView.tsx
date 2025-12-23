@@ -438,7 +438,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
         <div>
           <div className="text-slate-900 text-xl font-bold">Deal Workspace</div>
           <div className="mt-1 text-sm text-slate-600">
-            Split-screen negotiation: chat on the left, deal engine on the right.
+            Manage negotiation, pricing, risk controls and payment for this deal.
           </div>
           <div className="mt-2 flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold text-slate-500">Deal ID</span>
@@ -510,24 +510,35 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="font-bold text-slate-900 truncate">
-                      {deal.supplier.name}
+                      {deal.supplier.name || 'No supplier selected'}
                     </div>
-                    <Badge
-                      tone="green"
-                      icon={<Icon name="shield" className="w-4 h-4" />}
-                    >
-                      KYB Verified
-                    </Badge>
-                    <Badge tone="gray">
-                      Rating {deal.supplier.rating.toFixed(1)}/5
-                    </Badge>
+                    {deal.supplier.name && (
+                      <>
+                        <Badge
+                          tone="green"
+                          icon={<Icon name="shield" className="w-4 h-4" />}
+                        >
+                          KYB Verified
+                        </Badge>
+                        {deal.supplier.rating > 0 && (
+                          <Badge tone="gray">
+                            Rating {deal.supplier.rating.toFixed(1)}/5
+                          </Badge>
+                        )}
+                      </>
+                    )}
                   </div>
                   <div className="mt-0.5 text-xs text-slate-600">
                     Item:{' '}
                     <span className="font-semibold text-slate-900">
-                      {deal.item.name}
-                    </span>{' '}
-                    • Target: MOQ {deal.calc.qty} units
+                      {deal.item.name || 'Not specified'}
+                    </span>
+                    {deal.calc.qty ? (
+                      <>
+                        {' '}
+                        • Target: MOQ {deal.calc.qty} units
+                      </>
+                    ) : null}
                   </div>
                 </div>
 
@@ -566,25 +577,39 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                     <Icon name="paperclip" />
                     Attach
                   </button>
-                  <input ref={fileRef} type="file" className="hidden" onChange={onFileChange} />
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    className="hidden"
+                    onChange={onFileChange}
+                  />
                 </div>
               </div>
             </div>
 
             <div className="h-[520px] max-h-[60vh] p-4 overflow-y-auto sf-scrollbar bg-white">
               <div className="space-y-3">
+                {deal.chat.length === 0 ? (
+                  <div className="text-xs text-slate-400">
+                    Start the conversation to see messages here.
+                  </div>
+                ) : null}
                 {deal.chat.map((m) => (
                   <div key={m.id}>
                     {m.role === 'supplier' ? (
                       <ChatBubble
                         side="left"
-                        meta={`Supplier • ${deal.supplier.city}`}
+                        meta={
+                          deal.supplier.name
+                            ? `Supplier • ${deal.supplier.city || 'Location TBD'}`
+                            : undefined
+                        }
                         sub={deal.chatTranslate ? m.ru : null}
                       >
                         <div className="font-medium">{m.cn ?? m.ru}</div>
                       </ChatBubble>
                     ) : (
-                      <ChatBubble side="right" meta="You • Russian">
+                      <ChatBubble side="right" meta="You">
                         {m.ru}
                       </ChatBubble>
                     )}
@@ -598,7 +623,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                 <textarea
                   value={draftText}
                   onChange={(e) => setDraftText(e.target.value)}
-                  placeholder="Напишите сообщение... (e.g., ‘Нужны 500 шт. Какая цена FOB?’)"
+                  placeholder="Напишите сообщение поставщику… (например: 'Интересует партия. Условия и цена?')"
                   className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
                   rows={2}
                   onKeyDown={(e) => {
@@ -621,7 +646,6 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
             </div>
           </div>
         </div>
-
         {/* RIGHT: Deal Engine */}
         <div className="xl:col-span-6">
           <div className="sf-card rounded-2xl border border-slate-200 bg-white overflow-hidden">

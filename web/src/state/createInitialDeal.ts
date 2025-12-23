@@ -1,3 +1,4 @@
+// src/state/createInitialDeal.ts
 import type { DealState } from './dealTypes';
 import { HS_CODES } from '../modules/deal/hsCodes';
 
@@ -9,21 +10,34 @@ const makeId = () => {
 };
 
 export const createInitialDeal = (): DealState => ({
+  // Поставщик по умолчанию — пустой. Заполняется при выборе в Discovery / Create Deal.
   supplier: {
-    id: 'shenzhen-electronics',
-    name: 'Shenzhen Electronics Ltd',
-    city: 'Shenzhen, CN',
-    category: 'Consumer Electronics',
-    rating: 4.9,
+    id: '',
+    name: 'Select supplier to start',
+    city: '',
+    category: '',
+    rating: 0,
   },
-  item: { name: 'Wireless Headphones', sku: 'WH-500', incoterm: 'FOB Shenzhen' },
+
+  // Товар по умолчанию — нейтральный.
+  item: {
+    name: 'New Product',
+    sku: '',
+    incoterm: 'FOB',
+  },
+
+  // Стартовая стадия сделки
   stage: 'Draft',
+
+  // Базовые параметры калькулятора (можно менять пользователю)
   calc: {
-    factoryPriceCNY: 45,
-    qty: 500,
-    logisticsRUB: 120_000,
-    hs: HS_CODES[0], // 8518.30 — наушники
+    factoryPriceCNY: 0,
+    qty: 100,
+    logisticsRUB: 0,
+    hs: HS_CODES[0], // первый из списка — как дефолтный HS-код
   },
+
+  // FX: только “живой” курс, без блокировки
   fx: {
     rateLive: 13.2,
     locked: false,
@@ -31,41 +45,30 @@ export const createInitialDeal = (): DealState => ({
     lockExpiresAt: null,
     tick: 0,
   },
+
+  // Платежи: эскроу ещё не пополнен, платежей нет
   payment: {
     status: 'Not Funded',
     escrowAmountRUB: 0,
     releaseScheduled: false,
     releasedAt: null,
+    backendPaymentId: undefined,
   },
+
+  // Логистика: пока только базовый статус, без доставки
   logistics: {
-    current: 'Last Mile Delivery',
+    current: 'Not started',
     delivered: false,
     deliveredAt: null,
   },
-  chatTranslate: true,
-  chat: [
-    {
-      id: makeId(),
-      role: 'supplier',
-      cn: '你好！请问你需要什么产品？',
-      ru: 'Здравствуйте! Какой товар вас интересует?',
-      ts: new Date().toISOString(),
-    },
-    {
-      id: makeId(),
-      role: 'user',
-      ru: 'Здравствуйте. Интересуют беспроводные наушники. MOQ 500? Цена? Нужен контроль качества.',
-      ts: new Date().toISOString(),
-    },
-    {
-      id: makeId(),
-      role: 'supplier',
-      cn: 'MOQ 500。单价 ¥45.00。我们可以提供质检照片和视频。',
-      ru: 'MOQ 500. Цена ¥45.00. Можем предоставить фото и видео контроля качества.',
-      ts: new Date().toISOString(),
-    },
-  ],
 
+  // Признак авто-перевода в чате
+  chatTranslate: true,
+
+  // Чат — пустой. Сообщения появятся только при вводе пользователем.
+  chat: [],
+
+  // Связка с бэком (RFQ/Offer/Order/Deal) появится после создания сделки
   backend: undefined,
   backendSummary: undefined,
 });
