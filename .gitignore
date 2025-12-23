@@ -272,3 +272,4 @@ training_data.json
 # swagger/package-lock.json
 
 backend/app/data/
+backend/data/
