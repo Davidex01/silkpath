@@ -87,4 +87,15 @@ export interface DealState {
 
   // Связка с сущностями бэка (можно использовать позже)
   backend?: BackendIds;
+  backendSummary?: BackendDealSummary;
+}
+
+export interface BackendDealSummary {
+  dealId: string;
+  rfqId: string;
+  offerId: string;
+  orderId: string;
+  status: string;          // DealStatus из бэка ('ordered', 'paid', ...)
+  currency: string;        // 'CNY' | 'RUB' | 'USD'
+  totalAmount: number;     // из order.totalAmount
 }

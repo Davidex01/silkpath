@@ -67,4 +67,5 @@ export const createInitialDeal = (): DealState => ({
   ],
 
   backend: undefined,
+  backendSummary: undefined,
 });
