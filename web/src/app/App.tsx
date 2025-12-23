@@ -450,6 +450,8 @@ const App: React.FC = () => {
               toggleShortlist={toggleShortlist}
               onChatNow={handleChatNow}
               onOpenProfile={handleOpenProfile}
+              loading={suppliersLoading}
+              error={suppliersError}
             />
           ) : active === 'deal' ? (
             <DealWorkspaceView

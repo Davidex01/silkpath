@@ -32,6 +32,10 @@ interface DiscoveryViewProps {
   toggleShortlist: (s: DiscoverySupplier) => void;
   onChatNow: (s: DiscoverySupplier) => void;
   onOpenProfile: (s: DiscoverySupplier) => void;
+
+  // новые пропсы
+  loading?: boolean;
+  error?: string | null;
 }
 
 export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
@@ -44,14 +48,30 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
   toggleShortlist,
   onChatNow,
   onOpenProfile,
+  loading,
+  error,
 }) => {
   return (
     <div className="p-6">
+      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-slate-900 text-xl font-bold">Search & Suppliers</div>
           <div className="mt-1 text-sm text-slate-600">
             Find verified factories and start negotiation with built-in risk controls.
+          </div>
+
+          {/* Индикация загрузки / ошибок */}
+          <div className="mt-2 text-xs">
+            {loading ? (
+              <span className="text-blue-600 font-semibold">
+                Loading suppliers from backend…
+              </span>
+            ) : error ? (
+              <span className="text-orange-700">
+                {error} — showing demo suppliers.
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="hidden md:flex items-center gap-2">
@@ -157,8 +177,13 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
           <div className="flex items-center justify-between">
             <div className="text-sm text-slate-600">
               Showing{' '}
-              <span className="font-semibold text-slate-900">{suppliers.length}</span>{' '}
+              <span className="font-semibold text-slate-900">
+                {suppliers.length}
+              </span>{' '}
               suppliers
+              {loading ? (
+                <span className="text-xs text-blue-600 ml-2">(loading…)</span>
+              ) : null}
             </div>
             <div className="text-xs text-slate-500">Sorted by: Trust score</div>
           </div>
@@ -311,6 +336,13 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 </div>
               );
             })}
+
+            {/* если поставщиков нет */}
+            {suppliers.length === 0 && !loading ? (
+              <div className="mt-6 text-sm text-slate-500">
+                No suppliers found. Try adjusting filters or search query.
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
