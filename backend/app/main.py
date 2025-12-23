@@ -18,7 +18,7 @@ app = FastAPI(
     description="Backend for SilkFlow B2B messenger (MVP)",
 )
 
-# CORS для фронта (Vite по умолчанию на 5173)
+# CORS РґР»СЏ С„СЂРѕРЅС‚Р° (Vite РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ РЅР° 5173)
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",

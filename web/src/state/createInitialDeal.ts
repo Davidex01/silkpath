@@ -1,35 +1,74 @@
+// src/state/createInitialDeal.ts
 import type { DealState } from './dealTypes';
+import { HS_CODES } from '../modules/deal/hsCodes';
+
+const makeId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return String(Date.now() + Math.random());
+};
 
 export const createInitialDeal = (): DealState => ({
+  // Поставщик по умолчанию — пустой. Заполняется при выборе в Discovery / Create Deal.
   supplier: {
-    id: 'shenzhen-electronics',
-    name: 'Shenzhen Electronics Ltd',
-    city: 'Shenzhen, CN',
-    category: 'Consumer Electronics',
-    rating: 4.9,
+    id: '',
+    name: 'Select supplier to start',
+    city: '',
+    category: '',
+    rating: 0,
   },
-  item: { name: 'Wireless Headphones', sku: 'WH-500', incoterm: 'FOB Shenzhen' },
+
+  // Товар по умолчанию — нейтральный.
+  item: {
+    name: 'New Product',
+    sku: '',
+    incoterm: 'FOB',
+  },
+
+  // Стартовая стадия сделки
   stage: 'Draft',
+
+  // Базовые параметры калькулятора (можно менять пользователю)
   calc: {
-    factoryPriceCNY: 45,
-    qty: 500,
-    logisticsRUB: 120_000,
-    hs: { code: '8518.30' },
+    factoryPriceCNY: 0,
+    qty: 100,
+    logisticsRUB: 0,
+    hs: HS_CODES[0], // первый из списка — как дефолтный HS-код
   },
+
+  // FX: только “живой” курс, без блокировки
   fx: {
     rateLive: 13.2,
     locked: false,
     lockedRate: null,
     lockExpiresAt: null,
+    tick: 0,
   },
+
+  // Платежи: эскроу ещё не пополнен, платежей нет
   payment: {
     status: 'Not Funded',
     escrowAmountRUB: 0,
     releaseScheduled: false,
+    releasedAt: null,
+    backendPaymentId: undefined,
   },
+
+  // Логистика: пока только базовый статус, без доставки
   logistics: {
-    current: 'Last Mile Delivery',
+    current: 'Not started',
     delivered: false,
     deliveredAt: null,
   },
+
+  // Признак авто-перевода в чате
+  chatTranslate: true,
+
+  // Чат — пустой. Сообщения появятся только при вводе пользователем.
+  chat: [],
+
+  // Связка с бэком (RFQ/Offer/Order/Deal) появится после создания сделки
+  backend: undefined,
+  backendSummary: undefined,
 });
