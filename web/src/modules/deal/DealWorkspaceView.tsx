@@ -1,4 +1,3 @@
-// src/modules/deal/DealWorkspaceView.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { DealState } from '../../state/dealTypes';
 import type { AuthState } from '../../state/authTypes';
@@ -9,6 +8,7 @@ import { clamp } from '../../components/lib/clamp';
 import { HS_CODES } from './hsCodes';
 import type { Toast } from '../../components/common/ToastStack';
 import { loadDealSummary } from '../../api/loadDealSummary';
+import { createPayment } from '../../api/payments';
 
 interface DealWorkspaceViewProps {
   deal: DealState;
@@ -275,7 +275,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     });
   };
 
-  const depositToEscrow = () => {
+  const depositToEscrow = async () => {
     if (!deal.fx.locked) {
       addToast({
         tone: 'warn',
@@ -293,20 +293,56 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
       });
       return;
     }
-    setDeal((d) => ({
-      ...d,
-      payment: {
-        ...d.payment,
-        status: 'Escrow Funded',
-        escrowAmountRUB: Math.round(landedRUB),
-      },
-      stage: 'Escrow Funded',
-    }));
-    addToast({
-      tone: 'success',
-      title: 'Escrow funded (demo)',
-      message: 'Funds are protected. You can now release shipment.',
-    });
+    if (!deal.backend?.dealId) {
+      addToast({
+        tone: 'warn',
+        title: 'No backend deal linked',
+        message: 'Create and link a backend deal before funding escrow.',
+      });
+      return;
+    }
+
+    try {
+      addToast({
+        tone: 'info',
+        title: 'Creating payment…',
+        message: 'Depositing funds to escrow on backend.',
+      });
+
+      const amount = Math.round(landedRUB);
+
+      const payment = await createPayment(auth, {
+        dealId: deal.backend.dealId,
+        amount,
+        currency: 'RUB',
+        fxQuoteId: null,
+      });
+
+      // Обновляем локальное состояние
+      setDeal((d) => ({
+        ...d,
+        payment: {
+          ...d.payment,
+          status: 'Escrow Funded',        // UI-слой: escrow пополнен
+          escrowAmountRUB: amount,
+          backendPaymentId: payment.id,
+        },
+        stage: 'Escrow Funded',
+      }));
+
+      addToast({
+        tone: 'success',
+        title: 'Escrow funded',
+        message: `Payment ${payment.id} created (status: ${payment.status}).`,
+      });
+    } catch (e) {
+      console.error('Failed to create payment', e);
+      addToast({
+        tone: 'warn',
+        title: 'Payment failed',
+        message: 'Could not create escrow payment. Please check backend.',
+      });
+    }
   };
 
   const markAsShipped = () => {
@@ -818,7 +854,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                       }
                       disabled={escrowFunded}
                     >
-                      Deposit Now (demo)
+                      Deposit Now
                     </button>
                   </div>
                 </div>
