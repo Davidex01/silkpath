@@ -54,7 +54,7 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
         addToast({
           tone: 'warn',
           title: 'Logistics load failed',
-          message: 'Working with local logistics state (demo).',
+          message: 'Working with local logistics state.',
         });
       } finally {
         setLoadingLogistics(false);
@@ -87,7 +87,7 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
       addToast({
         tone: 'success',
         title: 'Delivery marked complete',
-        message: 'You can now confirm receipt and release escrow funds (demo).',
+        message: 'You can now confirm receipt and release escrow funds.',
       });
     } catch (e) {
       console.error('Failed to simulate logistics delivery', e);
@@ -110,7 +110,7 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
     setConfirmOpen(false);
     addToast({
       tone: 'warn',
-      title: 'Dispute flow (demo)',
+      title: 'Dispute flow',
       message:
         'Dispute flow is not implemented in this prototype. In production, this would open a claim form.',
     });
@@ -214,7 +214,7 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
               onClick={simulateDelivery}
               className="rounded-xl bg-orange-500 text-white px-4 py-2 text-sm font-semibold hover:brightness-95"
             >
-              Simulate Delivery (demo)
+              Simulate Delivery
             </button>
           ) : null}
         </div>
@@ -440,7 +440,7 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
                       Rail LCL
                     </div>
                     <div className="mt-1 text-xs text-slate-600">
-                      {delivered ? 'Delivered' : 'ETA: 9–12 days (demo)'}
+                      {delivered ? 'Delivered' : 'ETA: 9–12 days'}
                     </div>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -843,7 +843,7 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
                   onClick={reportProblem}
                   className="text-sm font-semibold text-orange-700 hover:text-orange-900 underline underline-offset-2"
                 >
-                  Report a problem instead (demo)
+                  Report a problem instead
                 </button>
               </div>
             </div>

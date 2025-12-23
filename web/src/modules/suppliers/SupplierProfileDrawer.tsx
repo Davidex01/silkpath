@@ -48,56 +48,6 @@ export const SupplierProfileDrawer: React.FC<SupplierProfileDrawerProps> = ({
     { id: 'reviews', label: 'Reviews' },
   ];
 
-  const kybChecks = [
-    { label: 'Legal entity registry (CN)', state: 'pass' as const },
-    { label: 'Beneficial owner screening', state: 'pass' as const },
-    { label: 'Bank account beneficiary match', state: 'pass' as const },
-    {
-      label: 'Export history cross-check',
-      state: supplier.exportLicense ? ('pass' as const) : ('warn' as const),
-    },
-    { label: 'Sanctions / blacklist screening', state: 'pass' as const },
-  ];
-
-  const deals = [
-    {
-      date: '2025-09-18',
-      product: supplier.items?.[0] || 'Consumer goods',
-      volume: '$38,400',
-      dispute: false,
-    },
-    {
-      date: '2025-07-02',
-      product: supplier.items?.[1] || 'Components',
-      volume: '$21,900',
-      dispute: false,
-    },
-    {
-      date: '2025-05-11',
-      product: supplier.items?.[2] || 'Accessories',
-      volume: '$12,700',
-      dispute: true,
-    },
-  ];
-
-  const reviews = [
-    {
-      name: 'ООО “Вектор”',
-      rating: 5,
-      text: 'Сделка прошла спокойно: документы выдали быстро, видео-осмотр перед отгрузкой помог снять риски.',
-    },
-    {
-      name: 'ИП Марина',
-      rating: 4,
-      text: 'Хорошая коммуникация и стабильное качество. По срокам один раз задержали на 2 дня, но предупредили заранее.',
-    },
-    {
-      name: 'ООО “Сигма”',
-      rating: 5,
-      text: 'Счёт/инвойс без ошибок, банк принял с первого раза. Рекомендую для регулярных поставок.',
-    },
-  ];
-
   return (
     <div className="fixed inset-0 z-40" aria-modal="true" role="dialog">
       {/* затемнение фона */}

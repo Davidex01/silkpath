@@ -288,7 +288,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
             onClick={() =>
               addToast({
                 tone: 'info',
-                title: 'Export all (demo)',
+                title: 'Export all',
                 message:
                   'In production, this would generate a ZIP with all documents for your accountant.',
               })
@@ -296,7 +296,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
           >
             <Icon name="docs" className="w-4 h-4" />
-            Export All (demo)
+            Export All
           </button>
         </div>
       </div>
@@ -662,7 +662,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                 onClick={() => handleDownload(previewDoc)}
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
               >
-                Download (demo)
+                Download
               </button>
               <button
                 onClick={() => setPreviewOpen(false)}

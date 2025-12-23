@@ -1,5 +1,3 @@
-import { api } from './client';
-
 export interface FileMeta {
   id: string;
   filename: string;

@@ -14,7 +14,6 @@ export async function createDealForSupplier(
   supplier: DiscoverySupplier,
 ): Promise<BackendDealIds> {
   const token = auth.tokens.accessToken;
-  const buyerOrgId = auth.org.id;
   const supplierOrgId = supplier.id;
 
   // 1. Create RFQ

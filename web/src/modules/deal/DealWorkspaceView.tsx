@@ -154,7 +154,6 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     return `SF-${s}-0142`;
   }, [deal.supplier?.id]);
 
-  const isSigned = deal.stage !== 'Draft';
   const escrowFunded = deal.payment.status === 'Escrow Funded';
 
   const lockRemaining = useMemo(() => {
@@ -219,7 +218,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     addToast({
       tone: 'info',
       title: 'Attachment added',
-      message: `${f.name} is ready to send (demo).`,
+      message: `${f.name} is ready to send.`,
     });
   };
 
@@ -237,7 +236,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
 
     addToast({
       tone: 'success',
-      title: 'Contract signed (demo)',
+      title: 'Contract signed',
       message: 'Deal is now in Signed stage. Next: lock FX and fund escrow.',
     });
 
@@ -259,7 +258,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
       addToast({
         tone: 'info',
         title: 'Backend document created',
-        message: 'Contract document was registered on backend (demo).',
+        message: 'Contract document was registered on backend.',
       });
     } catch (e) {
       console.error('Failed to create backend contract document', e);
@@ -303,7 +302,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
 
     addToast({
       tone: 'success',
-      title: 'Rate locked & escrow funded (demo)',
+      title: 'Rate locked & escrow funded',
       message: 'Funds are protected. You can now release shipment.',
     });
   };
@@ -386,7 +385,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     }));
     addToast({
       tone: 'info',
-      title: 'Shipment marked as dispatched (demo)',
+      title: 'Shipment marked as dispatched',
       message: 'Tracking is available in Logistics.',
       action: { label: 'Go to Logistics', onClick: onGoLogistics },
     });
@@ -932,7 +931,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                   }
                   disabled={!escrowFunded}
                 >
-                  Mark as Shipped (demo)
+                  Mark as Shipped
                 </button>
               </div>
             </div>
@@ -953,7 +952,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
             <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
                 <div className="text-base font-bold text-slate-900">
-                  Contract Preview (demo)
+                  Contract Preview
                 </div>
                 <div className="text-xs text-slate-600">
                   Simplified RFQ/contract placeholder.
@@ -994,13 +993,13 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                 }
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                Download (demo)
+                Download
               </button>
               <button
                 onClick={signContract}
                 className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
               >
-                Sign Contract (demo)
+                Sign Contract
               </button>
             </div>
           </div>
@@ -1022,7 +1021,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                 Freeze FX & Fund Escrow
               </div>
               <div className="text-xs text-slate-600">
-                Lock current CNY/RUB rate and deposit escrow in one step (demo).
+                Lock current CNY/RUB rate and deposit escrow in one step.
               </div>
             </div>
             <div className="p-5 space-y-3 text-sm text-slate-700">
@@ -1052,7 +1051,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                 onClick={confirmFreezeAndFund}
                 className="rounded-xl bg-[var(--sf-teal-600)] text-white px-4 py-2 text-sm font-semibold hover:brightness-95"
               >
-                Confirm (demo)
+                Confirm
               </button>
             </div>
           </div>

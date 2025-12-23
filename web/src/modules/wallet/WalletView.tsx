@@ -83,7 +83,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
     setTopUpOpen(false);
     addToast({
       tone: 'success',
-      title: 'Balance updated (demo)',
+      title: 'Balance updated',
       message: `+${fmt.rub(topUpAmount)} added to RUB balance.`,
     });
   };
@@ -93,7 +93,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
     setConvertOpen(false);
     addToast({
       tone: 'success',
-      title: 'Conversion completed (demo)',
+      title: 'Conversion completed',
       message: `${fmt.rub(convertAmount)} → ${fmt.cny(toCNY)} at rate ${fmt.num(
         fxRate,
         2,
@@ -116,13 +116,13 @@ export const WalletView: React.FC<WalletViewProps> = ({
             onClick={() => setTopUpOpen(true)}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
-            Top up RUB (demo)
+            Top up RUB
           </button>
           <button
             onClick={() => setConvertOpen(true)}
             className="rounded-xl bg-[var(--sf-teal-600)] text-white px-4 py-2 text-sm font-semibold hover:brightness-95"
           >
-            Convert RUB→CNY (demo)
+            Convert RUB→CNY
           </button>
         </div>
       </div>
@@ -370,7 +370,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
                 Top up RUB Balance
               </div>
               <div className="mt-0.5 text-xs text-slate-600">
-                Add funds to your SilkFlow wallet (demo).
+                Add funds to your SilkFlow wallet.
               </div>
             </div>
             <div className="p-5 space-y-4">

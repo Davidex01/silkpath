@@ -227,13 +227,6 @@ const App: React.FC = () => {
     void loadWallets(a);
   };
 
-  const handleLogout = () => {
-    clearAuth();
-    setAuth(null);
-    setOrg(null);
-    setMode('onboarding');
-  };
-
   const loadWallets = async (authState: AuthState) => {
     try {
       setWalletsLoading(true);
