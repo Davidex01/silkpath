@@ -1,19 +1,23 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { DealState } from '../../state/dealTypes';
 import { Badge } from '../../components/common/Badge';
 import { Icon } from '../../components/common/Icon';
 import type { Toast } from '../../components/common/ToastStack';
+import type { AuthState } from '../../state/authTypes';
+import { getDealLogistics, simulateDealDelivery } from '../../api/logistics';
 
 interface LogisticsViewProps {
   deal: DealState;
   setDeal: React.Dispatch<React.SetStateAction<DealState>>;
   addToast: (t: Omit<Toast, 'id'>) => void;
+  auth: AuthState;   // НОВОЕ
 }
 
 export const LogisticsView: React.FC<LogisticsViewProps> = ({
   deal,
   setDeal,
   addToast,
+  auth,
 }) => {
   const [videoOpen, setVideoOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -24,22 +28,74 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
   const releaseScheduled = deal.payment.releaseScheduled;
   const fundsReleased = deal.payment.status === 'Funds Released';
 
-  const simulateDelivery = () => {
-    setDeal((d) => ({
-      ...d,
-      logistics: {
-        ...d.logistics,
-        delivered: true,
-        current: 'Delivered to Moscow',
-        deliveredAt: new Date().toISOString(),
-      },
-    }));
-    addToast({
-      tone: 'success',
-      title: 'Delivery marked complete',
-      message:
-        'You can now confirm receipt and release escrow funds (demo).',
-    });
+  const [loadingLogistics, setLoadingLogistics] = useState(false);
+  const [logisticsError, setLogisticsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!deal.backend?.dealId) return;
+
+      try {
+        setLoadingLogistics(true);
+        setLogisticsError(null);
+        const state = await getDealLogistics(auth, deal.backend.dealId);
+        setDeal((prev) => ({
+          ...prev,
+          logistics: {
+            current: state.current,
+            delivered: state.delivered,
+            deliveredAt: state.deliveredAt,
+          },
+        }));
+      } catch (e) {
+        console.error('Failed to load logistics', e);
+        setLogisticsError('Could not load logistics state from backend');
+        addToast({
+          tone: 'warn',
+          title: 'Logistics load failed',
+          message: 'Working with local logistics state (demo).',
+        });
+      } finally {
+        setLoadingLogistics(false);
+      }
+    };
+
+    void load();
+  }, [auth, deal.backend?.dealId]);
+
+  const simulateDelivery = async () => {
+    if (!deal.backend?.dealId) {
+      addToast({
+        tone: 'warn',
+        title: 'No backend deal linked',
+        message: 'Create and link deal before simulating delivery.',
+      });
+      return;
+    }
+
+    try {
+      const state = await simulateDealDelivery(auth, deal.backend.dealId);
+      setDeal((d) => ({
+        ...d,
+        logistics: {
+          current: state.current,
+          delivered: state.delivered,
+          deliveredAt: state.deliveredAt,
+        },
+      }));
+      addToast({
+        tone: 'success',
+        title: 'Delivery marked complete',
+        message: 'You can now confirm receipt and release escrow funds (demo).',
+      });
+    } catch (e) {
+      console.error('Failed to simulate logistics delivery', e);
+      addToast({
+        tone: 'warn',
+        title: 'Logistics update failed',
+        message: 'Please check backend API.',
+      });
+    }
   };
 
   const openConfirmModal = () => {

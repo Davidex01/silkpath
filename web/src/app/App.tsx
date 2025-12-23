@@ -515,7 +515,12 @@ const App: React.FC = () => {
               auth={auth!}
             />
           ) : active === 'logistics' ? (
-            <LogisticsView deal={deal} setDeal={setDeal} addToast={addToast} />
+            <LogisticsView
+              deal={deal}
+              setDeal={setDeal}
+              addToast={addToast}
+              auth={auth!}
+            />
           ) : active === 'wallet' ? (
             <WalletView
               deal={deal}
