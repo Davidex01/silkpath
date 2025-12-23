@@ -209,7 +209,7 @@ const App: React.FC = () => {
       addToast({
         tone: 'warn',
         title: 'Suppliers load error',
-        message: 'Could not load suppliers list. Using demo data.',
+        message: 'Could not load suppliers list. Using default list.',
       });
     } finally {
       setSuppliersLoading(false);

@@ -65,11 +65,11 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
           <div className="mt-2 text-xs">
             {loading ? (
               <span className="text-blue-600 font-semibold">
-                Loading suppliers from backend…
+                Loading suppliers…
               </span>
             ) : error ? (
               <span className="text-orange-700">
-                {error} — showing demo suppliers.
+                {error}. Displaying cached/default list.
               </span>
             ) : null}
           </div>
@@ -155,8 +155,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     Trust-first matching
                   </div>
                   <div className="mt-0.5 text-xs text-blue-800">
-                    SilkFlow prioritizes suppliers with KYB checks and export history to
-                    reduce fraud risk.
+                    Suppliers with KYB checks and export history are highlighted to reduce compliance risk.
                   </div>
                 </div>
               </div>
