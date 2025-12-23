@@ -17,6 +17,20 @@ export interface Payment {
   failureReason?: string | null;
 }
 
+
+export async function releasePayment(
+  auth: AuthState,
+  paymentId: string,
+): Promise<Payment> {
+  const token = auth.tokens.accessToken;
+  return api<Payment>(
+    `/payments/${paymentId}/release`,
+    { method: 'POST' },
+    token,
+  );
+}
+
+
 export interface PaymentCreateInput {
   dealId: string;
   amount: number;

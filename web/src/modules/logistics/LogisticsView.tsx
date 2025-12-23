@@ -5,12 +5,13 @@ import { Icon } from '../../components/common/Icon';
 import type { Toast } from '../../components/common/ToastStack';
 import type { AuthState } from '../../state/authTypes';
 import { getDealLogistics, simulateDealDelivery } from '../../api/logistics';
+import { releasePayment } from '../../api/payments';
 
 interface LogisticsViewProps {
   deal: DealState;
   setDeal: React.Dispatch<React.SetStateAction<DealState>>;
   addToast: (t: Omit<Toast, 'id'>) => void;
-  auth: AuthState;   // НОВОЕ
+  auth: AuthState;
 }
 
 export const LogisticsView: React.FC<LogisticsViewProps> = ({
@@ -115,7 +116,7 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
     });
   };
 
-  const confirmReceipt = () => {
+  const confirmReceipt = async () => {
     if (!checkQty || !checkNoDamage) {
       addToast({
         tone: 'warn',
@@ -124,22 +125,45 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
       });
       return;
     }
-    setConfirmOpen(false);
-    setDeal((d) => ({
-      ...d,
-      payment: {
-        ...d.payment,
-        status: 'Funds Released',
-        releaseScheduled: true,
-        releasedAt: new Date().toISOString(),
-      },
-      stage: 'Shipped',
-    }));
-    addToast({
-      tone: 'success',
-      title: 'Receipt confirmed. Escrow funds ready to release (demo)',
-      message: 'Funds will be transferred to supplier within 24 hours.',
-    });
+
+    if (!deal.payment.backendPaymentId) {
+      addToast({
+        tone: 'warn',
+        title: 'No payment to release',
+        message: 'Escrow payment is not linked to this deal.',
+      });
+      return;
+    }
+
+    try {
+      // Вызываем бэкенд
+      const payment = await releasePayment(auth, deal.payment.backendPaymentId);
+
+      setConfirmOpen(false);
+      setDeal((d) => ({
+        ...d,
+        payment: {
+          ...d.payment,
+          status: 'Funds Released',
+          releaseScheduled: false,
+          releasedAt: payment.completedAt ?? new Date().toISOString(),
+        },
+        stage: 'Shipped',
+      }));
+
+      addToast({
+        tone: 'success',
+        title: 'Receipt confirmed. Escrow funds released',
+        message: `Payment ${payment.id} marked as ${payment.status}.`,
+      });
+    } catch (e) {
+      console.error('Failed to release payment', e);
+      addToast({
+        tone: 'warn',
+        title: 'Failed to release funds',
+        message: 'Please check payments API.',
+      });
+    }
   };
 
   const timelineSteps = [
