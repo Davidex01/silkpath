@@ -71,7 +71,12 @@ def update_rfq(rfq_id: str, payload: RFQUpdateRequest):
 
 @router.post("/rfqs/{rfq_id}/send", response_model=RFQ, tags=["RFQ"])
 def send_rfq(rfq_id: str):
-    rfq = service.send_rfq(rfq_id)
+    try:
+        rfq = service.send_rfq(rfq_id)
+    except ValueError as e:
+        if str(e) == "invalid_rfq_state":
+            raise HTTPException(status_code=409, detail="Invalid RFQ state for sending")
+        raise
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
     return rfq
@@ -104,11 +109,12 @@ def create_offer(
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
 
-    # For MVP we do not restrict supplierOrgId match:
-    # if rfq.supplierOrgId and rfq.supplierOrgId != supplier_org_id:
-    #     raise HTTPException(status_code=403, detail="Not allowed to offer for this RFQ")
-
-    offer = service.create_offer_for_rfq(rfq, supplier_org_id, payload)
+    try:
+        offer = service.create_offer_for_rfq(rfq, supplier_org_id, payload)
+    except ValueError as e:
+        if str(e) == "invalid_rfq_state":
+            raise HTTPException(status_code=409, detail="Invalid RFQ state for offer creation")
+        raise
     return offer
 
 
@@ -130,10 +136,15 @@ def reject_offer(offer_id: str):
 
 @router.post("/offers/{offer_id}/accept", tags=["Offers"])
 def accept_offer(offer_id: str):
-    """
-    Accept offer as buyer: creates Order and Deal.
-    """
-    res = service.accept_offer(offer_id)
+    try:
+        res = service.accept_offer(offer_id)
+    except ValueError as e:
+        msg = str(e)
+        if msg == "invalid_offer_state":
+            raise HTTPException(status_code=409, detail="Invalid offer state for accept")
+        if msg == "invalid_rfq_state":
+            raise HTTPException(status_code=409, detail="Invalid RFQ state for accept")
+        raise
     if not res:
         raise HTTPException(status_code=404, detail="Offer or RFQ not found")
     offer, order, deal = res

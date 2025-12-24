@@ -18,9 +18,9 @@ from app.schemas.rfq_deals import (
     Deal,
     DealStatus,
     DealAggregatedView,
-    DealLogisticsState,
     OfferItem,
     OrderItem,
+    DealLogisticsState,
 )
 from app.schemas.products import CurrencyCode
 from app.services import notifications as notifications_service
@@ -96,7 +96,8 @@ def send_rfq(rfq_id: str) -> Optional[RFQ]:
     if not rfq:
         return None
     if rfq.status not in (RFQStatus.draft, RFQStatus.responded):
-        return rfq
+        # not allowed to send again
+        raise ValueError("invalid_rfq_state")
     rfq.status = RFQStatus.sent
     rfqs[rfq_id] = rfq
     return rfq
@@ -109,6 +110,10 @@ def list_offers_for_rfq(rfq_id: str) -> List[Offer]:
 
 
 def create_offer_for_rfq(rfq: RFQ, supplier_org_id: str, payload: OfferCreateRequest) -> Offer:
+    # RFQ must be sent or already responded
+    if rfq.status not in (RFQStatus.sent, RFQStatus.responded):
+        raise ValueError("invalid_rfq_state")
+
     offer_id = str(uuid4())
     offer = Offer(
         id=offer_id,
@@ -124,17 +129,18 @@ def create_offer_for_rfq(rfq: RFQ, supplier_org_id: str, payload: OfferCreateReq
     )
     offers[offer_id] = offer
 
-    # mark RFQ as responded (simplified)
+    # Mark RFQ as responded
     rfq.status = RFQStatus.responded
     rfqs[rfq.id] = rfq
 
-    # Notify buyer org about new offer
+    # NEW: notify buyer org about new offer
     notifications_service.push_for_org(
         rfq.buyerOrgId,
         NotificationType.deal_status,
         NotificationEntityType.offer,
         offer_id,
-        text=f"New offer from supplier org {supplier_org_id}",
+        text=f"New offer for RFQ {rfq.id} from supplier {supplier_org_id}",
+        data={"rfqId": rfq.id},
     )
 
     return offer
@@ -160,9 +166,16 @@ def accept_offer(offer_id: str) -> Optional[tuple[Offer, Order, Deal]]:
     if not offer:
         return None
 
+    if offer.status != OfferStatus.sent:
+        # cannot accept already accepted/rejected offer
+        raise ValueError("invalid_offer_state")
+
     rfq = rfqs.get(offer.rfqId)
     if not rfq:
         return None
+
+    if rfq.status not in (RFQStatus.sent, RFQStatus.responded):
+        raise ValueError("invalid_rfq_state")
 
     # build order items
     order_items: List[OrderItem] = [
@@ -211,6 +224,10 @@ def accept_offer(offer_id: str) -> Optional[tuple[Offer, Order, Deal]]:
 
     offer.status = OfferStatus.accepted
     offers[offer_id] = offer
+
+    rfq.status = RFQStatus.closed
+    rfqs[rfq.id] = rfq
+
     return offer, order, deal
 
 
