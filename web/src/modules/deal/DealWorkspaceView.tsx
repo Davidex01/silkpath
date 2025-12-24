@@ -11,6 +11,7 @@ import type { Toast } from '../../components/common/ToastStack';
 import { loadDealSummary } from '../../api/loadDealSummary';
 import { createPayment } from '../../api/payments';
 import { createDealDocument } from '../../api/documents';
+import { loadDealUnitEconomics, type DealUnitEconomicsDto } from '../../api/analytics';
 
 
 
@@ -130,6 +131,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
 
   const [loadingBackend, setLoadingBackend] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
+  const [backendEconomics, setBackendEconomics] = useState<DealUnitEconomicsDto | null>(null);
 
   const steps = ['Draft', 'Signed', 'Escrow Funded', 'Shipped'];
   const currentStep = useMemo(() => {
@@ -406,33 +408,39 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
       return;
     }
 
-    try {
-      setLoadingBackend(true);
-      setBackendError(null);
+      try {
+          setLoadingBackend(true);
+          setBackendError(null);
 
-      const summary = await loadDealSummary(auth, deal.backend.dealId);
+          const backendDealId = deal.backend.dealId;
 
-      setDeal((prev) => ({
-        ...prev,
-        backendSummary: summary,
-      }));
+          const [summary, economics] = await Promise.all([
+              loadDealSummary(auth, backendDealId),
+              loadDealUnitEconomics(auth, backendDealId),
+          ]);
 
-      addToast({
-        tone: 'success',
-        title: 'Loaded deal from backend',
-        message: `Deal ${summary.dealId} — total ${summary.totalAmount} ${summary.currency}.`,
-      });
-    } catch (e) {
-      console.error('Failed to load backend deal', e);
-      setBackendError('Could not load deal from backend');
-      addToast({
-        tone: 'warn',
-        title: 'Failed to load deal',
-        message: 'Please check backend / auth and try again.',
-      });
-    } finally {
-      setLoadingBackend(false);
-    }
+          setDeal((prev) => ({
+              ...prev,
+              backendSummary: summary,
+          }));
+          setBackendEconomics(economics);
+
+          addToast({
+              tone: 'success',
+              title: 'Loaded deal from backend',
+              message: `Deal ${summary.dealId} — total ${summary.totalAmount} ${summary.currency}.`,
+          });
+      } catch (e) {
+          console.error('Failed to load backend deal or analytics', e);
+          setBackendError('Could not load deal or analytics from backend');
+          addToast({
+              tone: 'warn',
+              title: 'Failed to load deal',
+              message: 'Please check backend / auth and try again.',
+          });
+      } finally {
+          setLoadingBackend(false);
+      }
   };
 
   return (
@@ -823,6 +831,33 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                       </div>
                     </div>
                   </div>
+                  {backendEconomics ? (
+                    <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                      <div className="text-xs font-semibold text-emerald-900">
+                        Backend Unit Economics (MVP)
+                      </div>
+                      <div className="mt-1 text-xs text-emerald-800">
+                        Revenue:{' '}
+                        <span className="font-semibold sf-number">
+                          {backendEconomics.revenue.toFixed(2)} {backendEconomics.currency}
+                        </span>{' '}
+                        • Total cost:{' '}
+                        <span className="font-semibold sf-number">
+                          {backendEconomics.totalCost.toFixed(2)} {backendEconomics.currency}
+                        </span>{' '}
+                        • Margin:{' '}
+                        <span className="font-semibold sf-number">
+                          {backendEconomics.grossMarginPct.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-emerald-800">
+                        Product: {backendEconomics.costBreakdown.productCost.toFixed(2)}, Logistics:{' '}
+                        {backendEconomics.costBreakdown.logisticsCost.toFixed(2)}, Duties &amp; taxes:{' '}
+                        {backendEconomics.costBreakdown.dutiesTaxes.toFixed(2)}{' '}
+                        ({backendEconomics.notes || 'MVP shares over order.totalAmount'}).
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
                     <div className="text-xs font-semibold text-blue-900">
                       Total Landed Cost
