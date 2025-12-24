@@ -96,6 +96,10 @@ def create_payment(current_org_id: str, payload: PaymentCreateRequest) -> Paymen
     if not rfq:
         raise ValueError("rfq_not_found")
 
+    # Разрешаем платежи только для заказанных, частично оплаченных сделок
+    if deal.status not in (DealStatus.ordered, DealStatus.paid_partially):
+        raise ValueError("invalid_deal_status_for_payment")
+
     payer_org_id = current_org_id
     if payer_org_id == rfq.buyerOrgId:
         payee_org_id = rfq.supplierOrgId or payer_org_id
@@ -160,6 +164,13 @@ def release_payment(payment_id: str) -> Payment:
     if payment.status != PaymentStatus.pending:
         raise ValueError("invalid_payment_status")
 
+     # Проверяем сделку до движения денег
+    deal = deals_service.deals.get(payment.dealId)
+    if not deal:
+        raise ValueError("deal_not_found")
+    if deal.status != DealStatus.paid_partially:
+        raise ValueError("invalid_deal_status_for_release")
+
     # Fetch wallets
     payer_wallet = _ensure_wallet(payment.payerOrgId, payment.currency)
     payee_wallet = _ensure_wallet(payment.payeeOrgId, payment.currency)
@@ -179,20 +190,8 @@ def release_payment(payment_id: str) -> Payment:
     payments[payment.id] = payment
 
     # Mark deal as fully paid (MVP)
-    deal = deals_service.deals.get(payment.dealId)
-    if deal:
-        deal.status = DealStatus.paid
-        deals_service.deals[deal.id] = deal
-
-        # Notify payee org about funds release
-        notifications_service.push_for_org(
-            payment.payeeOrgId,
-            NotificationType.payment_status,
-            NotificationEntityType.payment,
-            payment.id,
-            text=f"Escrow funds released for deal {payment.dealId}",
-            data={"amount": payment.amount, "currency": payment.currency.value},
-        )
+    deal.status = DealStatus.paid
+    deals_service.deals[deal.id] = deal
 
     return payment
 

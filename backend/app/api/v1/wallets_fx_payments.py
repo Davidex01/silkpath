@@ -95,6 +95,11 @@ def create_payment(
             raise HTTPException(status_code=404, detail="Related RFQ not found")
         if msg == "insufficient_funds":
             raise HTTPException(status_code=400, detail="Insufficient funds")
+        if msg == "invalid_deal_status_for_payment":
+           raise HTTPException(
+               status_code=400,
+               detail="Deal status does not allow creating a new payment",
+           )
         raise
     return payment
 
@@ -114,6 +119,13 @@ def release_payment(payment_id: str):
             raise HTTPException(status_code=400, detail="Payment must be in 'pending' status")
         if msg == "insufficient_blocked":
             raise HTTPException(status_code=400, detail="Insufficient blocked funds")
+        if msg == "deal_not_found":
+           raise HTTPException(status_code=404, detail="Deal not found")
+        if msg == "invalid_deal_status_for_release":
+            raise HTTPException(
+                status_code=400,
+                detail="Deal status does not allow releasing funds",
+            )
         raise
     return payment
 
