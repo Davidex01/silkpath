@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 
 from app.schemas.orgs import (
@@ -10,6 +10,7 @@ from app.schemas.orgs import (
     OrganizationRole,
     KYBProfile,
     KYBSubmitRequest,
+    KybStatus,
 )
 from app.services import auth as auth_service
 from app.services import orgs as orgs_service
@@ -70,12 +71,20 @@ def submit_my_kyb(
 
 
 @router.get("/suppliers", response_model=list[Organization])
-def list_suppliers():
+def list_suppliers(
+    verifiedOnly: bool = Query(default=False, description="If true, return only KYB verified suppliers"),
+    country: Optional[str] = Query(default=None, description="Optional ISO country code filter"),
+):
     """
     Return organizations that can act as suppliers.
     """
-    orgs = []
+    result: list[Organization] = []
     for org in auth_service.orgs.values():
-        if org.role in (OrganizationRole.supplier, OrganizationRole.both):
-            orgs.append(org)
-    return orgs
+        if org.role not in (OrganizationRole.supplier, OrganizationRole.both):
+            continue
+        if country and org.country != country:
+            continue
+        if verifiedOnly and org.kybStatus != KybStatus.verified:
+            continue
+        result.append(org)
+    return result
