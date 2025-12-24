@@ -23,6 +23,8 @@ from app.schemas.rfq_deals import (
     OrderItem,
 )
 from app.schemas.products import CurrencyCode
+from app.services import notifications as notifications_service
+from app.schemas.notifications import NotificationType, NotificationEntityType
 
 
 rfqs: Dict[str, RFQ] = {}
@@ -48,6 +50,15 @@ def create_rfq(buyer_org_id: str, payload: RFQCreateRequest) -> RFQ:
         createdAt=_now(),
     )
     rfqs[rfq_id] = rfq
+    # Notify supplier org about new RFQ
+    if payload.supplierOrgId:
+        notifications_service.push_for_org(
+            payload.supplierOrgId,
+            NotificationType.deal_status,
+            NotificationEntityType.rfq,
+            rfq_id,
+            text=f"New RFQ from buyer org {buyer_org_id}",
+        )
     return rfq
 
 
@@ -116,6 +127,15 @@ def create_offer_for_rfq(rfq: RFQ, supplier_org_id: str, payload: OfferCreateReq
     # mark RFQ as responded (simplified)
     rfq.status = RFQStatus.responded
     rfqs[rfq.id] = rfq
+
+    # Notify buyer org about new offer
+    notifications_service.push_for_org(
+        rfq.buyerOrgId,
+        NotificationType.deal_status,
+        NotificationEntityType.offer,
+        offer_id,
+        text=f"New offer from supplier org {supplier_org_id}",
+    )
 
     return offer
 

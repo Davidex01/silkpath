@@ -18,7 +18,9 @@ from app.schemas.products import CurrencyCode
 from app.schemas.rfq_deals import DealStatus
 from app.services import auth as auth_service
 from app.services import rfq_deals as deals_service
-
+from app.services import rfq_deals as deals_service
+from app.services import notifications as notifications_service
+from app.schemas.notifications import NotificationType, NotificationEntityType
 
 wallets: Dict[str, Wallet] = {}
 payments: Dict[str, Payment] = {}
@@ -133,6 +135,17 @@ def create_payment(current_org_id: str, payload: PaymentCreateRequest) -> Paymen
     deal.status = DealStatus.paid_partially
     deals_service.deals[deal.id] = deal
 
+    # Notify payee org about escrow deposit
+    notifications_service.push_for_org(
+        payee_org_id,
+        NotificationType.payment_status,
+        NotificationEntityType.payment,
+        payment_id,
+        text=f"Escrow deposit created for deal {payload.dealId}",
+        data={"amount": payload.amount, "currency": payload.currency.value},
+    )
+
+
     return payment
 
 
@@ -170,6 +183,16 @@ def release_payment(payment_id: str) -> Payment:
     if deal:
         deal.status = DealStatus.paid
         deals_service.deals[deal.id] = deal
+
+        # Notify payee org about funds release
+        notifications_service.push_for_org(
+            payment.payeeOrgId,
+            NotificationType.payment_status,
+            NotificationEntityType.payment,
+            payment.id,
+            text=f"Escrow funds released for deal {payment.dealId}",
+            data={"amount": payment.amount, "currency": payment.currency.value},
+        )
 
     return payment
 
