@@ -1,23 +1,39 @@
+import { API_BASE } from './client';
+
 export interface FileMeta {
-  id: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-  url?: string | null;
-  createdAt: string;
+    id: string;
+    filename: string;
+    mimeType: string;
+    size: number;
+    url?: string | null;
+    createdAt: string;
 }
 
 /**
- * В прототипе у нас нет реального input[type=file] для документов,
- * поэтому создадим "виртуальный" файл через /files с пустым содержимым.
- * На бэке /files принимает UploadFile, так что для полноты это нужно будет
- * доработать бэкендеру. Сейчас будем считать, что у него есть способ
- * создать заглушечный File и вернуть FileMeta.
- *
- * Если это невозможно — этот модуль можно будет потом подправить.
+ * Создаёт "заглушечный" файл на бэке через /files.
+ * Сейчас контент фиктивный (PDF с текстом), но этого достаточно,
+ * чтобы Document ссылался на реальный fileId.
  */
 export async function createDummyFile(): Promise<FileMeta> {
-  // Здесь оставляем заглушку, чтобы фронт был готов.
-  // Бэкендер потом заменит на реальный upload через FormData и fetch.
-  throw new Error('createDummyFile is a placeholder; backend must implement file upload.');
+    const formData = new FormData();
+
+    // Простейший Blob как PDF-заглушка
+    const blob = new Blob(
+        [new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34])], // "%PDF-1.4"
+        { type: 'application/pdf' },
+    );
+
+    formData.append('file', blob, 'contract.pdf');
+
+    const res = await fetch(`${API_BASE}/files`, {
+        method: 'POST',
+        body: formData,          // ВАЖНО: НЕ выставляем Content-Type вручную
+    });
+
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `File upload failed with ${res.status}`);
+    }
+
+    return res.json() as Promise<FileMeta>;
 }

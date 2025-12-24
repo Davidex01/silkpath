@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createDummyFile } from '../../api/files';
 import type { DealState } from '../../state/dealTypes';
 import type { AuthState } from '../../state/authTypes';
 import { Icon } from '../../components/common/Icon';
@@ -10,6 +11,7 @@ import type { Toast } from '../../components/common/ToastStack';
 import { loadDealSummary } from '../../api/loadDealSummary';
 import { createPayment } from '../../api/payments';
 import { createDealDocument } from '../../api/documents';
+
 
 
 interface DealWorkspaceViewProps {
@@ -242,31 +244,32 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
 
     // создание документа на бэке, если есть dealId
     if (!deal.backend?.dealId) {
-      return;
+        return;
     }
 
     try {
-      // Временный fileId-заглушка — бэкендер позже подставит реальный из /files
-      const fakeFileId = 'TODO-fileId-from-backend';
+        // 1. Создаём заглушечный файл через /files
+        const file = await createDummyFile();
 
-      await createDealDocument(auth, deal.backend.dealId, {
-        type: 'contract',
-        title: `Main contract for deal ${deal.backend.dealId}`,
-        fileId: fakeFileId,
-      });
+        // 2. Регистрируем документ сделки, привязанный к этому файлу
+        await createDealDocument(auth, deal.backend.dealId, {
+            type: 'contract',
+            title: `Main contract for deal ${deal.backend.dealId}`,
+            fileId: file.id,
+        });
 
-      addToast({
-        tone: 'info',
-        title: 'Backend document created',
-        message: 'Contract document was registered on backend.',
-      });
+        addToast({
+            tone: 'info',
+            title: 'Backend document created',
+            message: 'Contract document was registered on backend.',
+        });
     } catch (e) {
-      console.error('Failed to create backend contract document', e);
-      addToast({
-        tone: 'warn',
-        title: 'Failed to create contract document',
-        message: 'Please check documents API later.',
-      });
+        console.error('Failed to create backend contract document', e);
+        addToast({
+            tone: 'warn',
+            title: 'Failed to create contract document',
+            message: 'Please check documents API later.',
+        });
     }
   };
 
