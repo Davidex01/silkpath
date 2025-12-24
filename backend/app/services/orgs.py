@@ -11,6 +11,7 @@ from app.schemas.orgs import (
     KYBDocumentType,
     KYBSubmitRequest,
     KybStatus,
+    Organization,
 )
 from app.services import auth as auth_service
 
@@ -49,6 +50,8 @@ def submit_kyb(org_id: str, payload: KYBSubmitRequest) -> KYBProfile:
     profile = get_or_create_kyb_profile(org_id)
 
     now = _now()
+
+    # добавляем новые документы в профиль
     for doc in payload.documents or []:
         kyb_doc = KYBDocument(
             id=str(uuid4()),
@@ -58,21 +61,24 @@ def submit_kyb(org_id: str, payload: KYBSubmitRequest) -> KYBProfile:
         )
         profile.submittedDocs.append(kyb_doc)
 
-    # Check if all required docs are present
+    # проверяем, все ли обязательные типы документов загружены
     submitted_types = {d.type for d in profile.submittedDocs}
-    has_all_required = all(req in submitted_types for req in profile.requiredDocs)
+    all_required_submitted = all(req in submitted_types for req in profile.requiredDocs)
 
-    if has_all_required:
+    if all_required_submitted:
         profile.status = KybStatus.verified
-        # Sync Organization.kybStatus
-        org = auth_service.orgs.get(org_id)
-        if org:
-            updated_data = org.model_dump()
-            updated_data["kybStatus"] = KybStatus.verified
-            auth_service.orgs[org_id] = type(org)(**updated_data)
+        profile.lastReviewedAt = now
     else:
         profile.status = KybStatus.pending
+        profile.lastReviewedAt = None
 
-    profile.lastReviewedAt = None
     kyb_profiles[org_id] = profile
+
+    # синхронизируем статус в Organization,
+    # чтобы /orgs/suppliers отдавал актуальный kybStatus
+    org = auth_service.orgs.get(org_id)
+    if org:
+        updated = Organization(**{**org.dict(), "kybStatus": profile.status})
+        auth_service.orgs[org_id] = updated
+
     return profile
