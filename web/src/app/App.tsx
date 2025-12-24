@@ -170,7 +170,11 @@ const App: React.FC = () => {
         createdAt: string;
       }
 
-      const orgs = await api<OrgFromApi[]>('/orgs/suppliers', {}, token);
+        const orgs = await api<OrgFromApi[]>(
+            '/orgs/suppliers?onlyVerified=true',
+            {},
+            token,
+        );
 
       // Маппим Organization -> DiscoverySupplier (гибридные данные)
       const mapped: DiscoverySupplier[] = orgs.map((o, index) => {

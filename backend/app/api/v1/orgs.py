@@ -72,11 +72,18 @@ def submit_my_kyb(
 
 @router.get("/suppliers", response_model=list[Organization])
 def list_suppliers(
-    verifiedOnly: bool = Query(default=False, description="If true, return only KYB verified suppliers"),
-    country: Optional[str] = Query(default=None, description="Optional ISO country code filter"),
+    country: Optional[str] = Query(
+        default=None,
+        description="Filter by country ISO code, e.g. 'CN' or 'RU'",
+    ),
+    onlyVerified: bool = Query(
+        default=False,
+        description="If true, return only KYB-verified suppliers",
+    ),
 ):
     """
-    Return organizations that can act as suppliers.
+    Return organizations that can act as suppliers (role=supplier or both),
+    optionally filtered by country and KYB status.
     """
     result: list[Organization] = []
     for org in auth_service.orgs.values():
@@ -84,7 +91,7 @@ def list_suppliers(
             continue
         if country and org.country != country:
             continue
-        if verifiedOnly and org.kybStatus != KybStatus.verified:
+        if onlyVerified and org.kybStatus != KybStatus.verified:
             continue
         result.append(org)
     return result
