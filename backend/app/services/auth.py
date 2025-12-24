@@ -41,7 +41,7 @@ def _save_users() -> None:
     _ensure_data_dir()
     data = []
     for u in users.values():
-        d = u.dict()
+        d = u.model_dump()
         d["createdAt"] = _dt_to_str(u.createdAt)
         data.append(d)
     USERS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -51,7 +51,7 @@ def _save_orgs() -> None:
     _ensure_data_dir()
     data = []
     for o in orgs.values():
-        d = o.dict()
+        d = d = o.model_dump()
         d["createdAt"] = _dt_to_str(o.createdAt)
         data.append(d)
     ORGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
