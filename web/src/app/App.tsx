@@ -25,8 +25,10 @@ import { listWallets } from '../api/wallets';
 import { listPaymentsForDeal } from '../api/payments';
 import type { Wallet } from '../api/wallets';
 import type { Payment } from '../api/payments';
+import { SupplierConsoleView } from '../modules/suppliers/SupplierConsoleView';
 
 type AuthMode = 'onboarding' | 'register' | 'login' | 'app';
+type AppMode = 'buyer' | 'supplier';
 
 // Пока ещё используем демо‑поставщиков (на следующих этапах заменим на /orgs/suppliers)
 const SUPPLIERS: DiscoverySupplier[] = [
@@ -84,6 +86,7 @@ const App: React.FC = () => {
 
   // актуальная орг‑инфо ...
   const [org, setOrg] = useState<BackendOrg | null>(null);
+  const [appMode, setAppMode] = useState<AppMode>('buyer');
 
   const [active, setActive] = useState<ActiveView>('discovery');
   const [deal, setDeal] = useState<DealState>(() => createInitialDeal());
@@ -220,6 +223,10 @@ const App: React.FC = () => {
     setAuth(a);
     setOrg(a.org);
     setMode('app');
+
+    // режим приложения: если чистый поставщик — supplier-консоль, иначе buyer
+    setAppMode(a.org.role === 'supplier' ? 'supplier' : 'buyer');
+
     await saveAuthEncrypted(a);
     void loadOrgProfile(a.tokens.accessToken);
     void loadSuppliers(a.tokens.accessToken);
@@ -284,8 +291,10 @@ const App: React.FC = () => {
         setAuth(stored);
         setOrg(stored.org);
         setMode('app');
+        setAppMode(stored.org.role === 'supplier' ? 'supplier' : 'buyer');
         void loadOrgProfile(stored.tokens.accessToken);
-        void loadSuppliers(stored.tokens.accessToken); // ← добавили
+        void loadSuppliers(stored.tokens.accessToken);
+        void loadWallets(stored);
       }
     });
   }, []);
@@ -417,6 +426,15 @@ const App: React.FC = () => {
         </>
       );
     }
+  }
+
+  if (auth && appMode === 'supplier') {
+    return (
+      <>
+        <SupplierConsoleView auth={auth} />
+        <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
+      </>
+    );
   }
 
   // ===== Основной UI (auth есть, mode === 'app') =====
