@@ -110,6 +110,15 @@ export const WalletView: React.FC<WalletViewProps> = ({
           <div className="mt-1 text-sm text-slate-600">
             Manage balances, escrow, and currency conversions in one place.
           </div>
+          {walletsLoading ? (
+            <div className="mt-1 text-xs text-blue-600">
+              Loading wallet balances from backend…
+            </div>
+          ) : walletsError ? (
+            <div className="mt-1 text-xs text-orange-700">
+              {walletsError}
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -278,6 +287,15 @@ export const WalletView: React.FC<WalletViewProps> = ({
           <div className="mt-0.5 text-xs text-slate-600">
             Last 5 transactions across all accounts.
           </div>
+          {paymentsLoading ? (
+            <div className="mt-0.5 text-xs text-blue-600">
+              Loading payments from backend…
+            </div>
+          ) : paymentsError ? (
+            <div className="mt-0.5 text-xs text-orange-700">
+              {paymentsError}
+            </div>
+          ) : null}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

@@ -2,13 +2,6 @@
 import type { DealState } from './dealTypes';
 import { HS_CODES } from '../modules/deal/hsCodes';
 
-const makeId = () => {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return String(Date.now() + Math.random());
-};
-
 export const createInitialDeal = (): DealState => ({
   // Поставщик по умолчанию — пустой. Заполняется при выборе в Discovery / Create Deal.
   supplier: {

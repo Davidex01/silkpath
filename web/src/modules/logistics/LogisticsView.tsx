@@ -186,6 +186,15 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
           <div className="mt-1 text-sm text-slate-600">
             Track cargo from China to Moscow with proof and milestones.
           </div>
+          {loadingLogistics ? (
+            <div className="mt-1 text-xs text-blue-600">
+              Loading logistics state from backend…
+            </div>
+          ) : logisticsError ? (
+            <div className="mt-1 text-xs text-orange-700">
+              {logisticsError}
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Badge

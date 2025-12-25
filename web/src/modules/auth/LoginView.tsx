@@ -53,9 +53,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess, onBack }) => {
       };
 
       onSuccess(auth);
-    } catch (e: any) {
-      console.error('Login failed', e);
-      setError('Invalid email or password.');
+    } catch (e) {
+        console.error('Login failed', e);
+        setError('Invalid email or password.');
     } finally {
       setSubmitting(false);
     }

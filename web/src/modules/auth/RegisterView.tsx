@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { api } from '../../api/client';
 import type { AuthState } from '../../state/authTypes';
 
+type OrgRole = 'buyer' | 'supplier' | 'both';
 interface RegisterViewProps {
   onSuccess: (auth: AuthState) => void;
   onBack: () => void;
@@ -13,7 +14,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onSuccess, onBack })
   const [name, setName] = useState('');
   const [orgName, setOrgName] = useState('');
   const [orgCountry, setOrgCountry] = useState('RU');
-  const [orgRole, setOrgRole] = useState<'buyer' | 'supplier' | 'both'>('both');
+    const [orgRole, setOrgRole] = useState<OrgRole>('both');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +66,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onSuccess, onBack })
       };
 
       onSuccess(auth);
-    } catch (e: any) {
+    } catch (e) {
       console.error('Register failed', e);
       setError('Registration failed. Please check data or try again later.');
     } finally {
@@ -154,7 +155,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onSuccess, onBack })
               </label>
               <select
                 value={orgRole}
-                onChange={(e) => setOrgRole(e.target.value as any)}
+                onChange={(e) => setOrgRole(e.target.value as OrgRole)}
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
               >
                 <option value="buyer">Buyer</option>

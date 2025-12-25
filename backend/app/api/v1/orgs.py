@@ -76,8 +76,9 @@ def list_suppliers(
         default=None,
         description="Filter by country ISO code, e.g. 'CN' or 'RU'",
     ),
-    onlyVerified: bool = Query(
+    verifiedOnly: bool = Query(
         default=False,
+        alias="verifiedOnly",
         description="If true, return only KYB-verified suppliers",
     ),
 ):
@@ -91,7 +92,7 @@ def list_suppliers(
             continue
         if country and org.country != country:
             continue
-        if onlyVerified and org.kybStatus != KybStatus.verified:
+        if verifiedOnly and org.kybStatus != KybStatus.verified:
             continue
         result.append(org)
     return result
