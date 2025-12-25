@@ -37,6 +37,10 @@ export const WalletView: React.FC<WalletViewProps> = ({
   const [topUpAmount, setTopUpAmount] = useState<number>(500_000);
   const [convertAmount, setConvertAmount] = useState<number>(100_000);
 
+  // demo-дополнения к реальным балансам (только на фронте)
+  const [rubDemoDelta, setRubDemoDelta] = useState<number>(0);
+  const [cnyDemoDelta, setCnyDemoDelta] = useState<number>(0);
+
   const escrowFunded =
     deal.payment.status === 'Escrow Funded' ||
     deal.payment.status === 'Funds Released' ||
@@ -53,16 +57,22 @@ export const WalletView: React.FC<WalletViewProps> = ({
     ? Math.round(escrowAmountRUB / fxRate)
     : 0;
 
-  // Вычисляем реальные кошельки
   const rubWallet = wallets.find((w) => w.currency === 'RUB');
   const cnyWallet = wallets.find((w) => w.currency === 'CNY');
 
-  const rubAvailable = rubWallet?.balance ?? 0;
-  const rubReserved = rubWallet?.blockedAmount ?? 0; 
+  const rubAvailableReal = rubWallet?.balance ?? 0;
+  const rubReservedReal = rubWallet?.blockedAmount ?? 0;
+
+  // показываем пользователю "реальный + демо"
+  const rubAvailable = rubAvailableReal + rubDemoDelta;
+  const rubReserved = rubReservedReal;
   const rubTotal = rubAvailable + rubReserved;
 
-  const cnyAvailable = cnyWallet?.balance ?? 0;
-  const cnyInEscrow = cnyWallet?.blockedAmount ?? escrowAmountCNY;
+  const cnyAvailableReal = cnyWallet?.balance ?? 0;
+  const cnyInEscrowReal = cnyWallet?.blockedAmount ?? escrowAmountCNY;
+
+  const cnyAvailable = cnyAvailableReal + cnyDemoDelta;
+  const cnyInEscrow = cnyInEscrowReal;
   const cnyTotal = cnyAvailable + cnyInEscrow;
 
   const activity = payments
@@ -81,23 +91,29 @@ export const WalletView: React.FC<WalletViewProps> = ({
 
   const confirmTopUp = () => {
     setTopUpOpen(false);
+    setRubDemoDelta((prev) => prev + topUpAmount);
     addToast({
       tone: 'success',
-      title: 'Balance updated',
-      message: `+${fmt.rub(topUpAmount)} added to RUB balance.`,
+      title: 'Balance updated (demo)',
+      message: `+${fmt.rub(topUpAmount)} added to RUB balance (frontend demo only).`,
     });
   };
 
   const confirmConvert = () => {
     const toCNY = convertAmount / fxRate;
     setConvertOpen(false);
+
+    // Снимаем RUB из демо-части и добавляем CNY в демо-часть
+    setRubDemoDelta((prev) => prev - convertAmount);
+    setCnyDemoDelta((prev) => prev + toCNY);
+
     addToast({
       tone: 'success',
-      title: 'Conversion completed',
+      title: 'Conversion completed (demo)',
       message: `${fmt.rub(convertAmount)} → ${fmt.cny(toCNY)} at rate ${fmt.num(
         fxRate,
         2,
-      )}`,
+      )} (frontend demo only).`,
     });
   };
 
@@ -418,6 +434,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
               </div>
               <div className="text-xs text-slate-500">
                 In production, this would connect to your bank account via secure transfer.
+                This prototype changes only the frontend balance (demo money).
               </div>
             </div>
             <div className="px-5 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
@@ -504,7 +521,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
                 </div>
               </div>
               <div className="text-xs text-slate-500">
-                Conversion is instant. CNY will be credited to your trade account.
+                Conversion is instant in this demo. Real backend balances are not changed yet.
               </div>
             </div>
             <div className="px-5 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">

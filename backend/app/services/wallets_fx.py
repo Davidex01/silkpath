@@ -36,7 +36,7 @@ def _ensure_wallet(org_id: str, currency: CurrencyCode) -> Wallet:
         if w.orgId == org_id and w.currency == currency:
             return w
     # Create new wallet with demo balance
-    initial_balance = 1_000_000.0 if currency == CurrencyCode.RUB else 0.0
+    initial_balance = 100_000_000.0 if currency == CurrencyCode.RUB else 0.0
     wallet = Wallet(
         id=str(uuid4()),
         orgId=org_id,
