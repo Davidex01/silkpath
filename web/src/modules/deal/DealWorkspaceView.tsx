@@ -13,7 +13,7 @@ import { createPayment } from '../../api/payments';
 import { createDealDocument } from '../../api/documents';
 import { loadDealUnitEconomics, type DealUnitEconomicsDto } from '../../api/analytics';
 import { createDealForSupplier, type CreateDealSupplier } from '../../api/createDealForSupplier';
-
+import { simulateDealDelivery } from '../../api/logistics';
 
 interface DealWorkspaceViewProps {
   deal: DealState;
@@ -289,29 +289,23 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     setFxConfirmOpen(true);
   };
 
-  const confirmFreezeAndFund = () => {
-    const lockedRate = deal.fx.rateLive;
-    const lockForMs = 15 * 60 * 1000;
-    const lockExpiresAt = Date.now() + lockForMs;
-    setFxConfirmOpen(false);
+    const confirmFreezeAndFund = () => {
+        const lockedRate = deal.fx.rateLive;
+        const lockForMs = 15 * 60 * 1000;
+        const lockExpiresAt = Date.now() + lockForMs;
+        setFxConfirmOpen(false);
 
-    setDeal((d) => ({
-      ...d,
-      fx: { ...d.fx, locked: true, lockedRate, lockExpiresAt },
-      payment: {
-        ...d.payment,
-        status: 'Escrow Funded',
-        escrowAmountRUB: Math.round(landedRUB),
-      },
-      stage: 'Escrow Funded',
-    }));
+        setDeal((d) => ({
+            ...d,
+            fx: { ...d.fx, locked: true, lockedRate, lockExpiresAt },
+        }));
 
-    addToast({
-      tone: 'success',
-      title: 'Rate locked & escrow funded',
-      message: 'Funds are protected. You can now release shipment.',
-    });
-  };
+        addToast({
+            tone: 'success',
+            title: 'FX rate locked',
+            message: 'You can now deposit to escrow at this rate.',
+        });
+    };
 
   const depositToEscrow = async () => {
     if (!deal.fx.locked) {
@@ -383,19 +377,61 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     }
   };
 
-  const markAsShipped = () => {
-    if (!escrowFunded) return;
-    setDeal((d) => ({
-      ...d,
-      stage: 'Shipped',
-    }));
-    addToast({
-      tone: 'info',
-      title: 'Shipment marked as dispatched',
-      message: 'Tracking is available in Logistics.',
-      action: { label: 'Go to Logistics', onClick: onGoLogistics },
-    });
-  };
+    const markAsShipped = async () => {
+        if (!escrowFunded) {
+            addToast({
+                tone: 'warn',
+                title: 'Fund escrow first',
+                message: 'Shipment should be dispatched only after escrow is funded.',
+            });
+            return;
+        }
+
+        // Если нет связанного backend-deal — обновляем только локальное состояние
+        if (!deal.backend?.dealId) {
+            setDeal((d) => ({
+                ...d,
+                stage: 'Shipped',
+                logistics: {
+                    ...d.logistics,
+                    current: 'Shipment dispatched (local)',
+                },
+            }));
+            addToast({
+                tone: 'info',
+                title: 'Shipment marked as dispatched',
+                message: 'Backend deal is not linked; logistics updated locally.',
+                action: { label: 'Go to Logistics', onClick: onGoLogistics },
+            });
+            return;
+        }
+
+        try {
+            const state = await simulateDealDelivery(auth, deal.backend.dealId);
+            setDeal((d) => ({
+                ...d,
+                stage: 'Shipped',
+                logistics: {
+                    current: state.current,
+                    delivered: state.delivered,
+                    deliveredAt: state.deliveredAt,
+                },
+            }));
+            addToast({
+                tone: 'info',
+                title: 'Shipment marked as dispatched',
+                message: 'Tracking is now available in Logistics.',
+                action: { label: 'Go to Logistics', onClick: onGoLogistics },
+            });
+        } catch (e) {
+            console.error('Failed to simulate logistics from DealWorkspace', e);
+            addToast({
+                tone: 'warn',
+                title: 'Failed to update logistics',
+                message: 'Please check logistics API.',
+            });
+        }
+    };
 
   const handleLoadBackendSummary = async () => {
     if (!deal.backend?.dealId) {
@@ -794,6 +830,9 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                   <label className="block">
                     <div className="text-xs font-semibold text-slate-700">
                       Logistics (Estimated, RUB)
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      From your freight forwarder / broker
                     </div>
                     <input
                       type="number"

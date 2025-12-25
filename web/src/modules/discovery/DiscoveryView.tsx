@@ -32,6 +32,8 @@ interface DiscoveryViewProps {
   toggleShortlist: (s: DiscoverySupplier) => void;
   onChatNow: (s: DiscoverySupplier) => void;
   onOpenProfile: (s: DiscoverySupplier) => void;
+  showShortlistOnly: boolean;
+  setShowShortlistOnly: React.Dispatch<React.SetStateAction<boolean>>;
 
   // новые пропсы
   loading?: boolean;
@@ -50,6 +52,8 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
   onOpenProfile,
   loading,
   error,
+  showShortlistOnly,
+  setShowShortlistOnly,
 }) => {
   return (
     <div className="p-6">
@@ -184,7 +188,18 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 <span className="text-xs text-blue-600 ml-2">(loading…)</span>
               ) : null}
             </div>
-            <div className="text-xs text-slate-500">Sorted by: Trust score</div>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <label className="inline-flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showShortlistOnly}
+                  onChange={(e) => setShowShortlistOnly(e.target.checked)}
+                  className="rounded border-slate-300 text-orange-500 focus:ring-orange-500"
+                />
+                <span>Show shortlist only</span>
+              </label>
+              <span className="hidden sm:inline">Sorted by: Trust score</span>
+            </div>
           </div>
 
           <div className="mt-3 space-y-3">

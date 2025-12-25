@@ -109,6 +109,9 @@ const App: React.FC = () => {
   });
 
   const [query, setQuery] = useState('Wireless Headphones');
+
+  const [showShortlistOnly, setShowShortlistOnly] = useState(false);
+
   const [shortlist, setShortlist] = useState<Set<string>>(() => new Set());
 
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -296,21 +299,25 @@ const App: React.FC = () => {
 
   // ===== Derived data =====
 
-  const suppliersFiltered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return suppliers
-      .filter((s) => {
-        if (filters.verified && !s.kyb) return false;
-        if (filters.exportLicense && !s.exportLicense) return false;
-        if (filters.lowMOQ && !s.lowMOQ) return false;
-        if (!q) return true;
-        const haystack = [s.name, s.city, s.category, ...s.items]
-          .join(' ')
-          .toLowerCase();
-        return haystack.includes(q);
-      })
-      .sort((a, b) => b.rating - a.rating);
-  }, [filters, query, suppliers]);
+    const suppliersFiltered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return suppliers
+            .filter((s) => {
+                if (filters.verified && !s.kyb) return false;
+                if (filters.exportLicense && !s.exportLicense) return false;
+                if (filters.lowMOQ && !s.lowMOQ) return false;
+
+                // если включён режим "только избранные"
+                if (showShortlistOnly && !shortlist.has(s.id)) return false;
+
+                if (!q) return true;
+                const haystack = [s.name, s.city, s.category, ...s.items]
+                    .join(' ')
+                    .toLowerCase();
+                return haystack.includes(q);
+            })
+            .sort((a, b) => b.rating - a.rating);
+    }, [filters, query, suppliers, showShortlistOnly, shortlist]);
 
   // ===== Handlers для Discovery/Deal =====
 
@@ -494,6 +501,8 @@ const App: React.FC = () => {
               onOpenProfile={handleOpenProfile}
               loading={suppliersLoading}
               error={suppliersError}
+              showShortlistOnly={showShortlistOnly}
+              setShowShortlistOnly={setShowShortlistOnly}
             />
           ) : active === 'deal' ? (
             <DealWorkspaceView
