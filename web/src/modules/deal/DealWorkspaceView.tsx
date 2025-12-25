@@ -12,7 +12,7 @@ import { loadDealSummary } from '../../api/loadDealSummary';
 import { createPayment } from '../../api/payments';
 import { createDealDocument } from '../../api/documents';
 import { loadDealUnitEconomics, type DealUnitEconomicsDto } from '../../api/analytics';
-
+import { createDealForSupplier, type CreateDealSupplier } from '../../api/createDealForSupplier';
 
 
 interface DealWorkspaceViewProps {
@@ -132,6 +132,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
   const [loadingBackend, setLoadingBackend] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [backendEconomics, setBackendEconomics] = useState<DealUnitEconomicsDto | null>(null);
+  const [creatingBackendDeal, setCreatingBackendDeal] = useState(false);
 
   const steps = ['Draft', 'Signed', 'Escrow Funded', 'Shipped'];
   const currentStep = useMemo(() => {
@@ -396,8 +397,6 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     });
   };
 
-  const isSignedStage = deal.stage !== 'Draft';
-
   const handleLoadBackendSummary = async () => {
     if (!deal.backend?.dealId) {
       addToast({
@@ -443,74 +442,114 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
       }
   };
 
+    const handleCreateBackendDeal = async () => {
+        if (deal.backend?.dealId) {
+            addToast({
+                tone: 'info',
+                title: 'Backend deal already exists',
+                message: `Deal ${deal.backend.dealId} is already linked.`,
+            });
+            return;
+        }
+
+        if (!deal.supplier.id) {
+            addToast({
+                tone: 'warn',
+                title: 'Select supplier first',
+                message: 'Choose a supplier in Discovery or Supplier Profile before creating a secured deal.',
+            });
+            return;
+        }
+
+        try {
+            setCreatingBackendDeal(true);
+
+            const supplierInput: CreateDealSupplier = {
+                id: deal.supplier.id,
+                name: deal.supplier.name,
+                city: deal.supplier.city,
+                // используем название товара как первый item
+                items: [deal.item.name],
+            };
+
+            const ids = await createDealForSupplier(auth, supplierInput);
+
+            setDeal((prev) => ({
+                ...prev,
+                backend: ids,
+            }));
+
+            addToast({
+                tone: 'success',
+                title: 'Secured deal created on backend',
+                message: `Deal ID: ${ids.dealId} (RFQ ${ids.rfqId}).`,
+            });
+        } catch (e) {
+            console.error('Failed to create backend deal', e);
+            addToast({
+                tone: 'warn',
+                title: 'Failed to create deal',
+                message: 'Please check backend API and try again.',
+            });
+        } finally {
+            setCreatingBackendDeal(false);
+        }
+    };
+
   return (
     <div className="p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-slate-900 text-xl font-bold">Deal Workspace</div>
-          <div className="mt-1 text-sm text-slate-600">
-            Manage negotiation, pricing, risk controls and payment for this deal.
+          <div className="flex items-center gap-2">
+              {/* 1. Кнопка создания backend-сделки, если её ещё нет */}
+              {!deal.backend?.dealId ? (
+                  <button
+                      onClick={handleCreateBackendDeal}
+                      disabled={creatingBackendDeal || !deal.supplier.id}
+                      className={
+                          'rounded-xl bg-[var(--sf-teal-600)] text-white px-4 py-2 text-sm font-semibold ' +
+                          (creatingBackendDeal || !deal.supplier.id
+                              ? 'opacity-60 cursor-not-allowed'
+                              : 'hover:brightness-95')
+                      }
+                  >
+                      {creatingBackendDeal ? 'Creating deal…' : 'Create Secured Deal'}
+                  </button>
+              ) : null}
+
+              {/* 2. Кнопка загрузки/обновления данных с бэка по уже существующей сделке */}
+              <button
+                  onClick={handleLoadBackendSummary}
+                  disabled={loadingBackend || !deal.backend?.dealId}
+                  className={
+                      'rounded-xl border px-4 py-2 text-sm font-semibold ' +
+                      (deal.backend?.dealId
+                          ? loadingBackend
+                              ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-wait'
+                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed')
+                  }
+              >
+                  {deal.backendSummary ? 'Refresh from Backend' : 'Load from Backend'}
+                  {backendError ? (
+                      <div className="mt-1 text-xs text-orange-700">{backendError}</div>
+                  ) : null}
+              </button>
+
+              {/* 3. Генерация/просмотр контракта */}
+              <button
+                  onClick={openContractPreview}
+                  className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
+              >
+                  Generate Contract (RFQ)
+              </button>
+
+              {/* 4. Кнопка перехода в логистику */}
+              <button
+                  onClick={onGoLogistics}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                  Go to Logistics
+              </button>
           </div>
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-slate-500">Deal ID</span>
-            <span className="text-xs font-extrabold text-slate-900 sf-number">
-              {dealIdLocal}
-            </span>
-            {isSignedStage ? (
-              <Badge tone="green" icon={<Icon name="check" className="w-4 h-4" />}>
-                Signed
-              </Badge>
-            ) : null}
-          </div>
-          {deal.backendSummary ? (
-            <div className="mt-1 text-xs text-slate-600">
-              Backend:&nbsp;
-              <span className="sf-number font-semibold text-slate-900">
-                {deal.backendSummary.dealId}
-              </span>
-              &nbsp;• Status&nbsp;
-              <span className="sf-number font-semibold text-slate-900">
-                {deal.backendSummary.status}
-              </span>
-              &nbsp;• Total&nbsp;
-              <span className="sf-number font-semibold text-slate-900">
-                {deal.backendSummary.totalAmount} {deal.backendSummary.currency}
-              </span>
-            </div>
-          ) : null}
-          {backendError ? (
-            <div className="mt-1 text-xs text-orange-700">{backendError}</div>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onGoLogistics}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Go to Logistics
-          </button>
-          <button
-            onClick={handleLoadBackendSummary}
-            disabled={loadingBackend || !deal.backend?.dealId}
-            className={
-              'rounded-xl border px-4 py-2 text-sm font-semibold ' +
-              (deal.backend?.dealId
-                ? loadingBackend
-                  ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-wait'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed')
-            }
-          >
-            {deal.backendSummary ? 'Refresh from Backend' : 'Load from Backend'}
-          </button>
-          <button
-            onClick={openContractPreview}
-            className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
-          >
-            Generate Contract (RFQ)
-          </button>
-        </div>
-      </div>
 
       <div className="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-4">
         {/* LEFT: Communication */}

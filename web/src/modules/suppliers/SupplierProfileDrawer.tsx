@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import type { DiscoverySupplier } from '../discovery/DiscoveryView';
 import { Badge } from '../../components/common/Badge';
 import { Icon } from '../../components/common/Icon';
@@ -34,10 +34,6 @@ export const SupplierProfileDrawer: React.FC<SupplierProfileDrawerProps> = ({
   onCreateDeal,            // ← деструктурируем
 }) => {
   const [tab, setTab] = useState<TabId>('overview');
-
-  useEffect(() => {
-    if (open) setTab('overview');
-  }, [open, supplier?.id]);
 
   if (!open || !supplier) return null;
 
@@ -124,7 +120,7 @@ export const SupplierProfileDrawer: React.FC<SupplierProfileDrawerProps> = ({
                 onClick={() => onCreateDeal && onCreateDeal(supplier)}
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
               >
-                Create Deal
+                Prepare Deal
               </button>
 
               {/* Старая кнопка Start Negotiation */}

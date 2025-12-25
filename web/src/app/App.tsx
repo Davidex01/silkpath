@@ -18,10 +18,9 @@ import { clamp } from '../components/lib/clamp';
 import { OnboardingLanding } from '../modules/onboarding/OnboardingLanding';
 import { RegisterView } from '../modules/auth/RegisterView';
 import { LoginView } from '../modules/auth/LoginView';
-import { saveAuthEncrypted, loadAuthEncrypted, clearAuth } from '../state/secureSession';
+import { saveAuthEncrypted, loadAuthEncrypted } from '../state/secureSession';
 import type { AuthState, BackendOrg } from '../state/authTypes';
 import { api } from '../api/client';
-import { createDealForSupplier } from '../api/createDealForSupplier';
 import { listWallets } from '../api/wallets';
 import { listPaymentsForDeal } from '../api/payments';
 import type { Wallet } from '../api/wallets';
@@ -85,8 +84,6 @@ const App: React.FC = () => {
 
   // актуальная орг‑инфо ...
   const [org, setOrg] = useState<BackendOrg | null>(null);
-  const [orgLoading, setOrgLoading] = useState(false);
-  const [orgError, setOrgError] = useState<string | null>(null);
 
   const [active, setActive] = useState<ActiveView>('discovery');
   const [deal, setDeal] = useState<DealState>(() => createInitialDeal());
@@ -136,24 +133,19 @@ const App: React.FC = () => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const loadOrgProfile = async (token: string) => {
-    try {
-      setOrgLoading(true);
-      setOrgError(null);
-      const data = await api<BackendOrg>('/orgs/me', {}, token);
-      setOrg(data);
-    } catch (e) {
-      console.error('Failed to fetch /orgs/me', e);
-      setOrgError('Could not load organization profile');
-      addToast({
-        tone: 'warn',
-        title: 'Backend access error',
-        message: 'Could not load organization profile (check API / auth).',
-      });
-    } finally {
-      setOrgLoading(false);
-    }
-  };
+    const loadOrgProfile = async (token: string) => {
+        try {
+            const data = await api<BackendOrg>('/orgs/me', {}, token);
+            setOrg(data);
+        } catch (e) {
+            console.error('Failed to fetch /orgs/me', e);
+            addToast({
+                tone: 'warn',
+                title: 'Backend access error',
+                message: 'Could not load organization profile (check API / auth).',
+            });
+        }
+    };
 
   const loadSuppliers = async (token: string) => {
     try {
@@ -543,54 +535,39 @@ const App: React.FC = () => {
 
       {/* Профиль поставщика (drawer) */}
       <SupplierProfileDrawer
-        open={profileOpen}
-        supplier={profileSupplier}
-        onClose={() => setProfileOpen(false)}
-        onStartNegotiation={handleStartNegotiation}
-        onCreateDeal={async (supplier) => {
-          if (!auth) return;
+           open={profileOpen}
+           supplier={profileSupplier}
+           onClose={() => setProfileOpen(false)}
+           onStartNegotiation={handleStartNegotiation}
+           onCreateDeal={(supplier) => {
+               if (!auth) return;
 
-          try {
-            addToast({
-              tone: 'info',
-              title: 'Creating backend deal…',
-              message: `Creating RFQ & Deal for ${supplier.name}.`,
-            });
+               // Заполняем данные поставщика в локальном состоянии сделки
+               setDeal((prev) => ({
+                   ...prev,
+                   supplier: {
+                       id: supplier.id,
+                       name: supplier.name,
+                       city: supplier.city,
+                       category: supplier.category,
+                       rating: supplier.rating,
+                   },
+               }));
 
-            const ids = await createDealForSupplier(auth, supplier);
+               // Переходим в Deal Workspace
+               setActive('deal');
+               setProfileOpen(false);
 
-            // Обновляем локальный deal-состояние
-            setDeal((prev) => ({
-              ...prev,
-              supplier: {
-                id: supplier.id,
-                name: supplier.name,
-                city: supplier.city,
-                category: supplier.category,
-                rating: supplier.rating,
-              },
-              backend: ids,
-            }));
-
-            setActive('deal');
-            setProfileOpen(false);
-
-            addToast({
-              tone: 'success',
-              title: 'Deal created on backend',
-              message: `Deal ID: ${ids.dealId} (RFQ ${ids.rfqId}).`,
-            });
-          } catch (e) {
-            console.error('Failed to create backend deal', e);
-            addToast({
-              tone: 'warn',
-              title: 'Failed to create deal',
-              message: 'Please check backend API and try again.',
-            });
-          }
-        }}
-      />
-
+               // Объясняем пользователю, что skeleton-сделка создаётся позже
+               addToast({
+                   tone: 'info',
+                   title: 'Deal workspace prepared',
+                   message:
+                       `Now configure RFQ and pricing for ${supplier.name}, ` +
+                       'then create a secured deal on backend from Deal Workspace.',
+               });
+           }}
+       />
       <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
     </div>
   );
