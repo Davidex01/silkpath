@@ -451,7 +451,7 @@ const App: React.FC = () => {
 
       {/* Правая часть: шапка + контент */}
       <div className="ml-72 min-h-screen flex flex-col">
-        <TopHeader active={active} deal={deal} />
+        <TopHeader active={active} deal={deal} auth={auth!} />
 
         {/* mini journey tabs */}
         <div className="px-6 pt-4">

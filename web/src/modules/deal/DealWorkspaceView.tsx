@@ -17,6 +17,11 @@ import {
 } from '../../api/chat';
 import { createPayment } from '../../api/payments';
 
+import {
+  getDealUnitEconomics,
+  type DealUnitEconomicsDto,
+} from '../../api/analytics';
+
 interface DealWorkspaceViewProps {
   deal: DealState;
   setDeal: React.Dispatch<React.SetStateAction<DealState>>;
@@ -239,6 +244,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
   // ===== Refs для предотвращения повторных загрузок =====
   const dealLoadedRef = useRef<string | null>(null);
   const chatLoadedRef = useRef<string | null>(null);
+  const analyticsLoadedRef = useRef<string | null>(null);
 
   // ===== Состояния загрузки =====
   const [dealData, setDealData] = useState<DealAggregatedView | null>(null);
@@ -265,9 +271,38 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
   const [calcDetailsOpen, setCalcDetailsOpen] = useState(false);
   const [escrowProcessing, setEscrowProcessing] = useState(false);
 
+  // Аналитика SilkFlow (backend-модель)
+  const [analytics, setAnalytics] = useState<DealUnitEconomicsDto | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+
   // ===== Вычисляемые значения =====
   const hasRealDeal = Boolean(deal.backend?.dealId);
   const escrowFunded = deal.payment.status === 'Escrow Funded' || deal.payment.status === 'Funds Released';
+
+  // ===== Загрузка аналитики сделки (backend) =====
+useEffect(() => {
+  const dId = deal.backend?.dealId;
+  if (!dId || analyticsLoadedRef.current === dId) return;
+
+  const loadAnalytics = async () => {
+    try {
+      setAnalyticsLoading(true);
+      setAnalyticsError(null);
+      const data = await getDealUnitEconomics(auth, dId);
+      setAnalytics(data);
+      analyticsLoadedRef.current = dId;
+    } catch (e) {
+      console.error('Failed to load deal analytics', e);
+      setAnalyticsError('Не удалось загрузить аналитику по сделке.');
+      analyticsLoadedRef.current = null;
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  void loadAnalytics();
+}, [auth, deal.backend?.dealId]);
 
   // ===== Загрузка данных сделки (только один раз) =====
   useEffect(() => {
@@ -1354,6 +1389,118 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* ===== ANALYTICS (BACKEND) ===== */}
+            <div className="sf-card rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-bold text-slate-900">
+                    Аналитика SilkFlow
+                  </div>
+                  <Badge tone="gray">Backend model</Badge>
+                </div>
+                {analytics && (
+                  <span className="text-xs text-slate-500 sf-number">
+                    Deal: {analytics.dealId.slice(0, 8)}… • {analytics.currency}
+                  </span>
+                )}
+              </div>
+
+              {analyticsLoading ? (
+                <div className="text-xs text-slate-500">
+                  Загрузка аналитики по сделке…
+                </div>
+              ) : analyticsError ? (
+                <div className="text-xs text-orange-700">{analyticsError}</div>
+              ) : analytics ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Левая колонка: выручка и маржа */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-600">
+                      Выручка (по заказу)
+                    </div>
+                    <div className="mt-1 text-lg font-extrabold text-slate-900 sf-number">
+                      {fmt.num(analytics.revenue, 2)} {analytics.currency}
+                    </div>
+                    <div className="mt-3 text-xs font-semibold text-slate-600">
+                      Валовая маржа
+                    </div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="text-lg font-extrabold text-emerald-700 sf-number">
+                        {fmt.num(analytics.grossMarginPct, 1)}%
+                      </span>
+                      <span className="text-xs text-slate-500 sf-number">
+                        ({fmt.num(analytics.grossMarginAbs, 2)} {analytics.currency})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Центр: структура затрат */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-600 mb-2">
+                      Структура затрат (модель SilkFlow)
+                    </div>
+                    {[
+                      { label: 'Товар', value: analytics.costBreakdown.productCost, color: 'bg-blue-500' },
+                      { label: 'Логистика', value: analytics.costBreakdown.logisticsCost, color: 'bg-teal-500' },
+                      { label: 'Пошлины и налоги', value: analytics.costBreakdown.dutiesTaxes, color: 'bg-orange-500' },
+                      { label: 'FX', value: analytics.costBreakdown.fxCost, color: 'bg-purple-500' },
+                      { label: 'Комиссии', value: analytics.costBreakdown.commissions, color: 'bg-slate-500' },
+                    ].map((item, i) => {
+                      const pct =
+                        analytics.totalCost > 0
+                          ? (item.value / analytics.totalCost) * 100
+                          : 0;
+                      return (
+                       <div key={i} className="mt-1">
+                         <div className="flex justify-between text-[11px] text-slate-600">
+                           <span>{item.label}</span>
+                           <span className="sf-number">
+                             {fmt.num(pct, 1)}%
+                           </span>
+                         </div>
+                         <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mt-0.5">
+                           <div
+                             className={`${item.color}`}
+                             style={{ width: `${pct}%` }}
+                           />
+                         </div>
+                       </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Правая колонка: сравнение с калькулятором */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-600 mb-1">
+                      Сравнение с вашим расчётом
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      SilkFlow использует простую модель долей затрат на основе выручки.
+                      Ваш калькулятор справа — детализированный сценарий.
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Модель SilkFlow (margin)</span>
+                        <span className="font-semibold text-slate-900 sf-number">
+                          {fmt.num(analytics.grossMarginPct, 1)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Ваш ROI (калькулятор)</span>
+                        <span className="font-semibold text-slate-900 sf-number">
+                          {fmt.num(calculations.roiPct, 1)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500">
+                  Аналитика станет доступна после создания сделки и заказа.
+                </div>
+              )}
             </div>
 
             {/* ===== ACTION BUTTONS ===== */}
