@@ -24,8 +24,9 @@ import { api } from '../api/client';
 import { listWallets } from '../api/wallets';
 import { listPaymentsForDeal } from '../api/payments';
 import type { Wallet } from '../api/wallets';
+import { BuyerRFQsView } from '../modules/buyer/BuyerRFQsView';
+import { SupplierShell } from '../modules/suppliers/SupplierShell';
 import type { Payment } from '../api/payments';
-import { SupplierConsoleView } from '../modules/suppliers/SupplierConsoleView';
 
 type AuthMode = 'onboarding' | 'register' | 'login' | 'app';
 type AppMode = 'buyer' | 'supplier';
@@ -100,6 +101,10 @@ const App: React.FC = () => {
   const [dealPaymentsLoading, setDealPaymentsLoading] = useState(false);
   const [dealPaymentsError, setDealPaymentsError] = useState<string | null>(null);
 
+  const [orgPayments, setOrgPayments] = useState<Payment[]>([]);
+  const [orgPaymentsLoading, setOrgPaymentsLoading] = useState(false);
+  const [orgPaymentsError, setOrgPaymentsError] = useState<string | null>(null);
+
   // Поставщики
   const [suppliers, setSuppliers] = useState<DiscoverySupplier[]>(SUPPLIERS);
   const [suppliersLoading, setSuppliersLoading] = useState(false);
@@ -122,6 +127,8 @@ const App: React.FC = () => {
   // Сайдбарный профиль поставщика
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSupplier, setProfileSupplier] =
+    useState<DiscoverySupplier | null>(null);
+  const [pendingRfqSupplier, setPendingRfqSupplier] =
     useState<DiscoverySupplier | null>(null);
 
   // ===== Helpers =====
@@ -169,7 +176,7 @@ const App: React.FC = () => {
       }
 
       const orgs = await api<OrgFromApi[]>(
-          '/orgs/suppliers?verifiedOnly=true',
+          '/orgs/suppliers',
           {},
           token,
       );
@@ -231,6 +238,7 @@ const App: React.FC = () => {
     void loadOrgProfile(a.tokens.accessToken);
     void loadSuppliers(a.tokens.accessToken);
     void loadWallets(a);
+    void loadOrgPayments(a); 
   };
 
   const loadWallets = async (authState: AuthState) => {
@@ -264,6 +272,12 @@ const App: React.FC = () => {
       setDealPaymentsLoading(false);
     }
   };
+
+  const refreshFinanceState = () => {
+    if (!auth) return;
+    void loadWallets(auth);
+    void loadOrgPayments(auth);
+  };
   // ===== Effects =====
 
   // FX‑тикер, как в прототипе
@@ -295,6 +309,7 @@ const App: React.FC = () => {
         void loadOrgProfile(stored.tokens.accessToken);
         void loadSuppliers(stored.tokens.accessToken);
         void loadWallets(stored);
+        void loadOrgPayments(stored);
       }
     });
   }, []);
@@ -431,7 +446,7 @@ const App: React.FC = () => {
   if (auth && appMode === 'supplier') {
     return (
       <>
-        <SupplierConsoleView auth={auth} />
+        <SupplierShell auth={auth} addToast={addToast} />
         <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
       </>
     );
@@ -522,6 +537,17 @@ const App: React.FC = () => {
               showShortlistOnly={showShortlistOnly}
               setShowShortlistOnly={setShowShortlistOnly}
             />
+          ) : active === 'rfqs' ? (
+            <BuyerRFQsView
+              auth={auth!}
+              deal={deal}
+              setDeal={setDeal}
+              addToast={addToast}
+              prefillSupplierOrgId={pendingRfqSupplier?.id ?? null}
+              prefillDefaultItemName={pendingRfqSupplier?.items[0] ?? null}
+              onPrefillConsumed={() => setPendingRfqSupplier(null)}
+              onActivateDealView={() => setActive('deal')}
+            />
           ) : active === 'deal' ? (
             <DealWorkspaceView
               deal={deal}
@@ -544,9 +570,9 @@ const App: React.FC = () => {
               wallets={wallets}
               walletsLoading={walletsLoading}
               walletsError={walletsError}
-              payments={dealPayments}
-              paymentsLoading={dealPaymentsLoading}
-              paymentsError={dealPaymentsError}
+              payments={orgPayments}
+              paymentsLoading={orgPaymentsLoading}
+              paymentsError={orgPaymentsError}
             />
           ) : active === 'documents' ? (
             <DocumentsView deal={deal} addToast={addToast} auth={auth!} />
@@ -562,39 +588,24 @@ const App: React.FC = () => {
 
       {/* Профиль поставщика (drawer) */}
       <SupplierProfileDrawer
-           open={profileOpen}
-           supplier={profileSupplier}
-           onClose={() => setProfileOpen(false)}
-           onStartNegotiation={handleStartNegotiation}
-           onCreateDeal={(supplier) => {
-               if (!auth) return;
+        open={profileOpen}
+        supplier={profileSupplier}
+        onClose={() => setProfileOpen(false)}
+        onStartNegotiation={handleStartNegotiation}
+        onCreateRFQ={(supplier) => {
+          if (!auth) return;
 
-               // Заполняем данные поставщика в локальном состоянии сделки
-               setDeal((prev) => ({
-                   ...prev,
-                   supplier: {
-                       id: supplier.id,
-                       name: supplier.name,
-                       city: supplier.city,
-                       category: supplier.category,
-                       rating: supplier.rating,
-                   },
-               }));
+          setPendingRfqSupplier(supplier);
+          setActive('rfqs');
+          setProfileOpen(false);
 
-               // Переходим в Deal Workspace
-               setActive('deal');
-               setProfileOpen(false);
-
-               // Объясняем пользователю, что skeleton-сделка создаётся позже
-               addToast({
-                   tone: 'info',
-                   title: 'Deal workspace prepared',
-                   message:
-                       `Now configure RFQ and pricing for ${supplier.name}, ` +
-                       'then create a secured deal on backend from Deal Workspace.',
-               });
-           }}
-       />
+          addToast({
+            tone: 'info',
+            title: 'RFQ draft prepared',
+            message: `Fill RFQ for ${supplier.name} on the RFQs & Offers screen.`,
+          });
+        }}
+      />
       <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
     </div>
   );

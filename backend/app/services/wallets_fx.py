@@ -52,6 +52,8 @@ def _ensure_wallet(org_id: str, currency: CurrencyCode) -> Wallet:
 def list_wallets_for_org(org_id: Optional[str] = None) -> List[Wallet]:
     if org_id is None:
         return list(wallets.values())
+    # Для демо: гарантируем, что у организации есть хотя бы RUB-кошелёк
+    _ensure_wallet(org_id, CurrencyCode.RUB)
     return [w for w in wallets.values() if w.orgId == org_id]
 
 

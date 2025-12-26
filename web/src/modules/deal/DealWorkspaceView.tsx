@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createDummyFile } from '../../api/files';
-import type { DealState } from '../../state/dealTypes';
+import type { DealState, DealChatMessage, ChatRole } from '../../state/dealTypes';
 import type { AuthState } from '../../state/authTypes';
 import { Icon } from '../../components/common/Icon';
 import { Badge } from '../../components/common/Badge';
@@ -15,12 +15,21 @@ import { loadDealUnitEconomics, type DealUnitEconomicsDto } from '../../api/anal
 import { createDealForSupplier, type CreateDealSupplier } from '../../api/createDealForSupplier';
 import { simulateDealDelivery } from '../../api/logistics';
 
+import {
+  getOrCreateChatForDeal,
+  listChatMessagesByChatId,
+  sendChatMessageToChat,
+  translateMessageInChat,
+  type MessageDto,
+} from '../../api/chat';
+
 interface DealWorkspaceViewProps {
   deal: DealState;
   setDeal: React.Dispatch<React.SetStateAction<DealState>>;
   addToast: (t: Omit<Toast, 'id'>) => void;
   onGoLogistics: () => void;
   auth: AuthState;
+  onFinanceUpdate?: () => void;
 }
 
 function ProgressStepper({ steps, current }: { steps: string[]; current: number }) {
@@ -123,6 +132,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
   addToast,
   onGoLogistics,
   auth,
+  onFinanceUpdate,
 }) => {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draftText, setDraftText] = useState('');
@@ -133,6 +143,7 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
   const [backendError, setBackendError] = useState<string | null>(null);
   const [backendEconomics, setBackendEconomics] = useState<DealUnitEconomicsDto | null>(null);
   const [creatingBackendDeal, setCreatingBackendDeal] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const steps = ['Draft', 'Signed', 'Escrow Funded', 'Shipped'];
   const currentStep = useMemo(() => {
@@ -174,6 +185,102 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     return `${m}:${String(s).padStart(2, '0')}`;
   }, [lockRemaining]);
 
+  const mapChatDtosToState = (dtos: MessageDto[]): DealChatMessage[] => {
+  return dtos.map((m): DealChatMessage => {
+    const isMe = m.senderId === auth.user.id;
+
+    let ruText = m.text;
+    let cnText: string | undefined = undefined;
+
+    if (!isMe && m.translations && m.translations.length > 0) {
+      // ищем перевод на русский
+      const ruTr = m.translations.find((t) =>
+        t.lang.toLowerCase().startsWith('ru'),
+      );
+      if (ruTr) {
+        // оригинальный текст сохраняем как "cn" (условно),
+        // переведённый текст показываем как ru
+        cnText = m.text;
+        ruText = ruTr.text;
+      }
+    }
+
+    return {
+      id: m.id,
+      role: (isMe ? 'user' : 'supplier') as ChatRole,
+      ru: ruText,
+      cn: cnText,
+      ts: m.createdAt,
+    };
+  });
+};
+
+const dealSteps = ['Draft', 'Signed', 'Escrow Funded', 'Shipped'] as const;
+
+let currentDealStep = 0;
+if (deal.stage === 'Signed') currentDealStep = 1;
+else if (deal.stage === 'Escrow Funded') currentDealStep = 2;
+else if (deal.stage === 'Shipped') currentDealStep = 3;
+
+  useEffect(() => {
+    const ensureChat = async () => {
+      if (!auth || !deal.backend?.dealId) return;
+      // если чат уже известен — ничего не делаем
+      if (deal.chatId) return;
+
+      try {
+        const chat = await getOrCreateChatForDeal(auth, deal.backend.dealId);
+        setDeal((prev) => ({
+          ...prev,
+          chatId: chat.id,
+        }));
+      } catch (e) {
+        console.error('Failed to get/create chat for deal', e);
+        // тост не обязателен, можно оставить тихий лог
+      }
+    };
+
+    void ensureChat();
+  }, [auth, deal.backend?.dealId, deal.chatId, setDeal]);
+
+  useEffect(() => {
+    const loadChat = async () => {
+      if (!auth || !deal.chatId) return;
+      try {
+        const dtos = await listChatMessagesByChatId(auth, deal.chatId);
+        const mapped = mapChatDtosToState(dtos);
+        setDeal((prev) => ({
+          ...prev,
+          chat: mapped,
+        }));
+      } catch (e) {
+        console.error('Failed to load chat messages', e);
+      }
+    };
+
+    void loadChat();
+  }, [auth, deal.chatId, setDeal]);
+
+  useEffect(() => {
+    if (!auth || !deal.chatId) return;
+
+    const interval = setInterval(() => {
+      listChatMessagesByChatId(auth, deal.chatId!)
+        .then((dtos) => {
+          const mapped = mapChatDtosToState(dtos);
+          setDeal((prev) => ({
+            ...prev,
+            chat: mapped,
+          }));
+        })
+        .catch((e) => {
+          console.error('Failed to poll chat messages', e);
+        });
+    }, 3000); // каждые 3 секунды
+
+    return () => clearInterval(interval);
+  }, [auth, deal.chatId, setDeal]);
+
   useEffect(() => {
     if (!deal.fx.locked) return;
     if (escrowFunded) return;
@@ -190,27 +297,80 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     }
   }, [lockRemaining, deal.fx.locked, escrowFunded, setDeal, addToast]);
 
-  const sendMessage = () => {
+
+  useEffect(() => {
+    const runAutoTranslate = async () => {
+      if (!auth || !deal.chatId || !deal.chatTranslate) return;
+
+      // ищем первое сообщение от поставщика без перевода
+      const untranslated = deal.chat.find(
+        (m) => m.role === 'supplier' && !m.cn,
+      );
+      if (!untranslated) return;
+
+      try {
+        await translateMessageInChat(auth, deal.chatId, untranslated.id, 'ru');
+        // дальше polling сам обновит локальный chat через listChatMessagesByChatId
+      } catch (e) {
+        console.error('Failed to auto-translate message', e);
+        // можно не спамить тостами, чтобы не раздражать пользователя
+      }
+    };
+
+    void runAutoTranslate();
+  }, [auth, deal.chatId, deal.chat, deal.chatTranslate]);
+
+  const sendMessage = async () => {
     const text = draftText.trim();
     if (!text) return;
-    const id =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : String(Date.now() + Math.random());
 
-    setDeal((d) => ({
-      ...d,
-      chat: [
-        ...d.chat,
-        {
-          id,
-          role: 'user',
-          ru: text,
-          ts: new Date().toISOString(),
-        },
-      ],
-    }));
-    setDraftText('');
+    if (!deal.backend?.dealId) {
+      addToast({
+        tone: 'warn',
+        title: 'No backend deal linked',
+        message: 'Create or link a secured deal before starting chat.',
+      });
+      return;
+    }
+
+    if (!deal.chatId) {
+      addToast({
+        tone: 'warn',
+        title: 'Chat is not ready yet',
+        message: 'Please wait a moment and try again.',
+      });
+      return;
+    }
+
+    try {
+      const msg = await sendChatMessageToChat(auth, deal.chatId, {
+        text,
+        lang: 'ru',
+      });
+
+      setDeal((d) => ({
+        ...d,
+        chat: [
+          ...d.chat,
+          {
+            id: msg.id,
+            role: 'user' as ChatRole,
+            ru: msg.text,
+            cn: undefined,
+            ts: msg.createdAt,
+          },
+        ],
+      }));
+
+      setDraftText('');
+    } catch (e) {
+      console.error('Failed to send chat message', e);
+      addToast({
+        tone: 'warn',
+        title: 'Failed to send message',
+        message: 'Please check backend API and try again.',
+      });
+    }
   };
 
   const onAttachClick = () => {
@@ -351,11 +511,20 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
       });
 
       // Обновляем локальное состояние
+      const payment = await createPayment(auth, {
+        dealId: deal.backend.dealId,
+        amount,
+        currency: 'RUB',
+        fxQuoteId: null,
+      });
+
+      onFinanceUpdate?.();
+
       setDeal((d) => ({
         ...d,
         payment: {
           ...d.payment,
-          status: 'Escrow Funded',        // UI-слой: escrow пополнен
+          status: 'Escrow Funded',
           escrowAmountRUB: amount,
           backendPaymentId: payment.id,
         },
@@ -516,9 +685,9 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
             }));
 
             addToast({
-                tone: 'success',
-                title: 'Secured deal created on backend',
-                message: `Deal ID: ${ids.dealId} (RFQ ${ids.rfqId}).`,
+              tone: 'success',
+              title: 'Secured deal created (fast demo)',
+              message: `Deal ID: ${ids.dealId} (RFQ ${ids.rfqId}). In a real flow you would go through RFQ → Offer → Accept.`,
             });
         } catch (e) {
             console.error('Failed to create backend deal', e);
@@ -533,59 +702,136 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
     };
 
   return (
-    <div className="p-6">
-          <div className="flex items-center gap-2">
-              {/* 1. Кнопка создания backend-сделки, если её ещё нет */}
-              {!deal.backend?.dealId ? (
-                  <button
-                      onClick={handleCreateBackendDeal}
-                      disabled={creatingBackendDeal || !deal.supplier.id}
-                      className={
-                          'rounded-xl bg-[var(--sf-teal-600)] text-white px-4 py-2 text-sm font-semibold ' +
-                          (creatingBackendDeal || !deal.supplier.id
-                              ? 'opacity-60 cursor-not-allowed'
-                              : 'hover:brightness-95')
-                      }
-                  >
-                      {creatingBackendDeal ? 'Creating deal…' : 'Create Secured Deal'}
-                  </button>
-              ) : null}
-
-              {/* 2. Кнопка загрузки/обновления данных с бэка по уже существующей сделке */}
-              <button
-                  onClick={handleLoadBackendSummary}
-                  disabled={loadingBackend || !deal.backend?.dealId}
-                  className={
-                      'rounded-xl border px-4 py-2 text-sm font-semibold ' +
-                      (deal.backend?.dealId
-                          ? loadingBackend
-                              ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-wait'
-                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                          : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed')
-                  }
-              >
-                  {deal.backendSummary ? 'Refresh from Backend' : 'Load from Backend'}
-                  {backendError ? (
-                      <div className="mt-1 text-xs text-orange-700">{backendError}</div>
-                  ) : null}
-              </button>
-
-              {/* 3. Генерация/просмотр контракта */}
-              <button
-                  onClick={openContractPreview}
-                  className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
-              >
-                  Generate Contract (RFQ)
-              </button>
-
-              {/* 4. Кнопка перехода в логистику */}
-              <button
-                  onClick={onGoLogistics}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                  Go to Logistics
-              </button>
+  <div className="p-6">
+    {/* Header: Deal Workspace + buttons */}
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <div className="text-slate-900 text-xl font-bold">Deal Workspace</div>
+        <div className="mt-1 text-sm text-slate-600">
+          Manage negotiation, pricing, risk controls and payment for this deal.
+        </div>
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-slate-500">Deal ID</span>
+          <span className="text-xs font-extrabold text-slate-900 sf-number">
+            {dealIdLocal}
+          </span>
+          {deal.stage !== 'Draft' ? (
+            <Badge tone="green" icon={<Icon name="check" className="w-4 h-4" />}>
+              {deal.stage}
+            </Badge>
+          ) : null}
+        </div>
+        {deal.backendSummary ? (
+          <div className="mt-1 text-xs text-slate-600">
+            Backend:&nbsp;
+            <span className="sf-number font-semibold text-slate-900">
+              {deal.backendSummary.dealId}
+            </span>
+            &nbsp;• Status&nbsp;
+            <span className="sf-number font-semibold text-slate-900">
+              {deal.backendSummary.status}
+            </span>
+            &nbsp;• Total&nbsp;
+            <span className="sf-number font-semibold text-slate-900">
+              {deal.backendSummary.totalAmount} {deal.backendSummary.currency}
+            </span>
           </div>
+        ) : null}
+        {backendError ? (
+          <div className="mt-1 text-xs text-orange-700">{backendError}</div>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2">
+        {/* Help-кнопка по сценарию сделки */}
+        <button
+          onClick={() => setHelpOpen(true)}
+          className="rounded-full border border-slate-200 bg-white w-9 h-9 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-sm font-bold"
+          title="Show deal flow help"
+        >
+          ?
+        </button>
+
+        {/* 1. Кнопка создания backend-сделки, если её ещё нет (fast demo) */}
+        {!deal.backend?.dealId ? (
+          <button
+            onClick={handleCreateBackendDeal}
+            disabled={creatingBackendDeal || !deal.supplier.id}
+            className={
+              'rounded-xl bg-[var(--sf-teal-600)] text-white px-4 py-2 text-sm font-semibold ' +
+              (creatingBackendDeal || !deal.supplier.id
+                ? 'opacity-60 cursor-not-allowed'
+                : 'hover:brightness-95')
+            }
+          >
+            {creatingBackendDeal ? 'Creating deal…' : 'Fast demo: Create Secured Deal'}
+          </button>
+        ) : null}
+
+        {/* 2. Кнопка загрузки/обновления данных с бэка по уже существующей сделке */}
+        <button
+          onClick={handleLoadBackendSummary}
+          disabled={loadingBackend || !deal.backend?.dealId}
+          className={
+            'rounded-xl border px-4 py-2 text-sm font-semibold ' +
+            (deal.backend?.dealId
+              ? loadingBackend
+                ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-wait'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed')
+          }
+        >
+          {deal.backendSummary ? 'Refresh from Backend' : 'Load from Backend'}
+        </button>
+
+        {/* 3. Генерация/просмотр контракта */}
+        <button
+          onClick={openContractPreview}
+          className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
+        >
+          Generate Contract (RFQ)
+        </button>
+
+        {/* 4. Кнопка перехода в логистику */}
+        <button
+          onClick={onGoLogistics}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Go to Logistics
+        </button>
+      </div>
+    </div>
+
+    {/* Step-бар стадии сделки */}
+    <div className="mt-4 sf-card rounded-2xl border border-slate-200 bg-white p-3">
+      <div className="text-xs font-semibold text-slate-700 mb-2">
+        Deal stages
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs">
+        {dealSteps.map((label, index) => {
+          const done = index < currentDealStep;
+          const active = index === currentDealStep;
+          return (
+            <div
+              key={label}
+              className={
+                'inline-flex items-center gap-1 px-2 py-1 rounded-full ring-1 ring-inset ' +
+                (done
+                  ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                  : active
+                  ? 'bg-blue-50 text-blue-900 ring-blue-200'
+                  : 'bg-slate-50 text-slate-600 ring-slate-200')
+              }
+            >
+              <span className="w-4 h-4 rounded-full bg-white text-xs font-bold grid place-items-center">
+                {done ? <Icon name="check" className="w-3 h-3" /> : index + 1}
+              </span>
+              {label}
+            </div>
+          );
+        })}
+      </div>
+    </div>
 
       <div className="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-4">
         {/* LEFT: Communication */}
@@ -715,12 +961,12 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      sendMessage();
+                      void sendMessage();
                     }
                   }}
                 />
                 <button
-                  onClick={sendMessage}
+                  onClick={() => void sendMessage()}
                   className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2.5 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
                 >
                   Send
@@ -1192,6 +1438,66 @@ export const DealWorkspaceView: React.FC<DealWorkspaceViewProps> = ({
                 className="rounded-xl bg-[var(--sf-teal-600)] text-white px-4 py-2 text-sm font-semibold hover:brightness-95"
               >
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Deal flow help modal */}
+      {helpOpen ? (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 grid place-items-center p-4"
+          onClick={() => setHelpOpen(false)}
+        > 
+          <div
+            className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 sf-card overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div>
+                <div className="text-base font-bold text-slate-900">
+                  Deal flow — how it works
+                </div>
+                <div className="text-xs text-slate-600">
+                  From RFQ to signed contract, escrow and shipment.
+                </div>
+              </div>
+              <button
+                className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                onClick={() => setHelpOpen(false)}
+              >
+                <Icon name="x" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 text-sm text-slate-700">
+              <div>
+                <span className="font-semibold">Step 1: Draft.</span>{' '}
+                You and supplier discuss item, quantity and price. RFQ and offer
+                data are collected here.
+              </div>
+              <div>
+                <span className="font-semibold">Step 2: Signed.</span>{' '}
+                Once you agree on terms, a contract/RFQ is signed. Documents are
+               stored in the Documents tab.
+              </div>
+              <div>
+                <span className="font-semibold">Step 3: Escrow funded.</span>{' '}
+                You lock FX rate and deposit full landed cost into escrow. Funds are
+                protected until delivery.
+              </div>
+              <div>
+                <span className="font-semibold">Step 4: Shipped &amp; complete.</span>{' '}
+                Supplier ships goods. After delivery and inspection, escrow funds
+                are released to the supplier and the deal is closed.
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end">
+              <button
+                onClick={() => setHelpOpen(false)}
+                className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
+              >
+                Got it
               </button>
             </div>
           </div>

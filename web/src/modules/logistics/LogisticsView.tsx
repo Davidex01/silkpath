@@ -12,6 +12,7 @@ interface LogisticsViewProps {
   setDeal: React.Dispatch<React.SetStateAction<DealState>>;
   addToast: (t: Omit<Toast, 'id'>) => void;
   auth: AuthState;
+  onFinanceUpdate?: () => void;
 }
 
 export const LogisticsView: React.FC<LogisticsViewProps> = ({
@@ -19,6 +20,7 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
   setDeal,
   addToast,
   auth,
+  onFinanceUpdate,
 }) => {
   const [videoOpen, setVideoOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -31,6 +33,8 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
 
   const [loadingLogistics, setLoadingLogistics] = useState(false);
   const [logisticsError, setLogisticsError] = useState<string | null>(null);
+
+  const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -139,6 +143,8 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
       // Вызываем бэкенд
       const payment = await releasePayment(auth, deal.payment.backendPaymentId);
 
+      onFinanceUpdate?.();
+
       setConfirmOpen(false);
       setDeal((d) => ({
         ...d,
@@ -165,6 +171,20 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
       });
     }
   };
+
+   // Определяем шаги процесса логистики
+  const logisticSteps = [
+    'Deposit to Escrow',
+    'Shipment in transit',
+    'Delivery to warehouse',
+    'Receipt & Release funds',
+  ] as const;
+
+  let currentStep = 0;
+  if (deal.payment.status === 'Escrow Funded' || releaseScheduled || fundsReleased)
+    currentStep = 1;
+  if (delivered) currentStep = 2;
+  if (fundsReleased) currentStep = 3;
 
   const timelineSteps = [
     { label: 'Production Done', state: 'done', detail: 'Completed on schedule' },
@@ -226,6 +246,37 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
               Simulate Delivery
             </button>
           ) : null}
+        </div>
+      </div>
+
+      {/* Step-бар процесса логистики */}
+      <div className="mt-4 sf-card rounded-2xl border border-slate-200 bg-white p-3">
+        <div className="text-xs font-semibold text-slate-700 mb-2">
+          Logistics steps
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {logisticSteps.map((label, index) => {
+            const done = index < currentStep;
+            const active = index === currentStep;
+            return (
+              <div
+                key={label}
+                className={
+                  'inline-flex items-center gap-1 px-2 py-1 rounded-full ring-1 ring-inset ' +
+                  (done
+                    ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                    : active
+                    ? 'bg-blue-50 text-blue-900 ring-blue-200'
+                    : 'bg-slate-50 text-slate-600 ring-slate-200')
+                }
+              >
+                <span className="w-4 h-4 rounded-full bg-white text-xs font-bold grid place-items-center">
+                  {done ? <Icon name="check" className="w-3 h-3" /> : index + 1}
+                </span>
+                {label}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -874,6 +925,72 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
                 }
               >
                 Confirm & Release Funds
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Help modal */}
+      {helpOpen ? (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 grid place-items-center p-4"
+          onClick={() => setHelpOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 sf-card overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div>
+                <div className="text-base font-bold text-slate-900">
+                  Logistics flow — how it works
+                </div>
+                <div className="text-xs text-slate-600">
+                  From escrow deposit to delivery and funds release.
+                </div>
+              </div>
+              <button
+                className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                onClick={() => setHelpOpen(false)}
+              >
+                <Icon name="x" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 text-sm text-slate-700">
+              <div>
+                <span className="font-semibold">Step 1: Deposit to Escrow.</span>{' '}
+                Buyer funds escrow for this deal. Money is blocked until delivery
+                is confirmed.
+              </div>
+              <div>
+                <span className="font-semibold">
+                  Step 2: Shipment &amp; transit.
+                </span>{' '}
+                Supplier ships goods. SilkFlow tracks route and customs status.
+              </div>
+              <div>
+                <span className="font-semibold">
+                  Step 3: Delivery to warehouse.
+                </span>{' '}
+                Cargo arrives to buyer&apos;s warehouse or 3PL. Proofs (video,
+                photos, packing list) are collected.
+              </div>
+              <div>
+                <span className="font-semibold">
+                  Step 4: Receipt &amp; funds release.
+                </span>{' '}
+                Buyer checks quantity and visible damage. On confirmation,
+                escrow is released to supplier. If there is a problem, dispute
+                flow is started instead.
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end">
+              <button
+                onClick={() => setHelpOpen(false)}
+                className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
+              >
+                Got it
               </button>
             </div>
           </div>
