@@ -1,21 +1,38 @@
 import React from 'react';
-import { Icon } from '../common/Icon';
+import { Icon, type IconName } from '../common/Icon';
 import type { DealState } from '../../state/dealTypes';
 
-export type ActiveView = 'discovery' | 'deal' | 'wallet' | 'logistics' | 'documents';
+export type ActiveView = 'discovery' | 'rfqs' | 'deal' | 'wallet' | 'logistics' | 'documents';
 
 interface SidebarProps {
   active: ActiveView;
   setActive: (v: ActiveView) => void;
   deal: DealState;
+  orgName?: string;  // новое
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ active, setActive, deal }) => {
-  const nav: { id: ActiveView; label: string; icon: any; badge: string | null }[] = [
+export const Sidebar: React.FC<SidebarProps> = ({ active, setActive, deal, orgName }) => {
+  const nav: { id: ActiveView; label: string; icon: IconName; badge: string | null }[] = [
     { id: 'discovery', label: 'Search & Suppliers', icon: 'search', badge: null },
-    { id: 'deal', label: 'My Deals', icon: 'deals', badge: deal.payment.status === 'Waiting for Deposit' ? '!' : null },
+    {
+      id: 'rfqs',
+      label: 'RFQs & Offers',
+      icon: 'deals',
+      badge: null,
+    },
+    {
+      id: 'deal',
+      label: 'My Deals',
+      icon: 'deals',
+      badge: deal.payment.status === 'Waiting for Deposit' ? '!' : null,
+    },
     { id: 'wallet', label: 'Wallet', icon: 'wallet', badge: null },
-    { id: 'logistics', label: 'Logistics', icon: 'truck', badge: !deal.logistics.delivered ? '•' : null },
+    {
+      id: 'logistics',
+      label: 'Logistics',
+      icon: 'truck',
+      badge: !deal.logistics.delivered ? '•' : null,
+    },
     { id: 'documents', label: 'Documents', icon: 'docs', badge: null },
   ];
 
@@ -29,7 +46,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ active, setActive, deal }) => 
           </div>
           <div className="min-w-0">
             <div className="text-base font-extrabold tracking-tight">SilkFlow</div>
-            <div className="text-xs text-white/70">Russia ⇄ China Trade Control Center</div>
+            <div className="text-xs text-white/70">
+              Russia ⇄ China Trade Control Center
+            </div>
           </div>
         </div>
 
@@ -104,7 +123,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ active, setActive, deal }) => 
       <div className="absolute bottom-0 left-0 right-0 p-4">
         <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-3">
           <div className="text-xs text-white/70">Signed in</div>
-          <div className="mt-1 text-sm font-semibold">ИП Алексей (SME Owner)</div>
+          <div className="mt-1 text-sm font-semibold">
+            {orgName ?? 'ИП Алексей (SME Owner)'}
+          </div>
           <div className="mt-2 text-[11px] text-white/60">
             Prefers: simple steps • clear numbers • no paperwork
           </div>

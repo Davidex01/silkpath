@@ -1,4 +1,13 @@
-export interface Supplier {
+// web/src/state/dealTypes.ts
+export type DealStage = 'Draft' | 'Signed' | 'Escrow Funded' | 'Shipped';
+
+export type PaymentStatusUI =
+  | 'Not Funded'
+  | 'Waiting for Deposit'
+  | 'Escrow Funded'
+  | 'Funds Released';
+
+export interface SupplierInfo {
   id: string;
   name: string;
   city: string;
@@ -6,38 +15,89 @@ export interface Supplier {
   rating: number;
 }
 
-export interface DealCalc {
+export interface ItemInfo {
+  name: string;
+  sku: string;
+  incoterm: string;
+}
+
+export interface HSCodeMeta {
+  code: string;
+  label: string;
+  duty: number; // 0..1
+  vat: number;  // 0..1
+}
+
+export interface DealCalcState {
   factoryPriceCNY: number;
   qty: number;
   logisticsRUB: number;
-  hs: { code: string };
+  hs: HSCodeMeta;
 }
 
-export interface DealFX {
+export interface DealFxState {
   rateLive: number;
   locked: boolean;
   lockedRate: number | null;
-  lockExpiresAt: number | null;
+  lockExpiresAt: number | null; // timestamp (ms since epoch)
+  tick: number;
 }
 
-export interface DealPayment {
-  status: 'Not Funded' | 'Waiting for Deposit' | 'Escrow Funded' | 'Funds Released';
+export interface DealPaymentState {
+  status: PaymentStatusUI;
   escrowAmountRUB: number;
   releaseScheduled: boolean;
+  releasedAt: string | null;
+  backendPaymentId?: string;
 }
 
-export interface DealLogistics {
+export interface DealLogisticsStateUI {
   current: string;
   delivered: boolean;
   deliveredAt: string | null;
 }
 
+export type ChatRole = 'user' | 'supplier';
+
+export interface DealChatMessage {
+  id: string;
+  role: ChatRole;
+  ru: string;
+  cn?: string;
+  ts: string; // ISO datetime
+}
+
+export interface BackendIds {
+  rfqId?: string;
+  offerId?: string;
+  orderId?: string;
+  dealId?: string;
+}
+
+export interface BackendDealSummary {
+  dealId: string;
+  rfqId: string;
+  offerId: string;
+  orderId: string;
+  status: string;          // DealStatus из бэка ('ordered', 'paid', ...)
+  currency: string;        // 'CNY' | 'RUB' | 'USD'
+  totalAmount: number;     // из order.totalAmount
+}
+
 export interface DealState {
-  supplier: Supplier;
-  item: { name: string; sku: string; incoterm: string };
-  stage: 'Draft' | 'Signed' | 'Escrow Funded' | 'Shipped';
-  calc: DealCalc;
-  fx: DealFX;
-  payment: DealPayment;
-  logistics: DealLogistics;
+  supplier: SupplierInfo;
+  item: ItemInfo;
+  stage: DealStage;
+  calc: DealCalcState;
+  fx: DealFxState;
+  payment: DealPaymentState;
+  logistics: DealLogisticsStateUI;
+  chatTranslate: boolean;
+  chat: DealChatMessage[];
+
+  backend?: BackendIds;
+  backendSummary?: BackendDealSummary;
+
+  // backend chat
+  chatId?: string;
 }

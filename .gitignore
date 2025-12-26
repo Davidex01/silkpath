@@ -7,6 +7,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+.vs/
 .Python
 build/
 develop-eggs/
@@ -262,3 +263,14 @@ web/.vscode/*
 !.vscode/extensions.json
 web/.idea
 web/.DS_Store
+
+# --- SilkPath Project Specific ---
+
+# Данные обучения AI-бота (если не хочешь пушить)
+training_data.json
+
+# Swagger (опционально - можно оставить для воспроизводимости)
+# swagger/package-lock.json
+
+backend/app/data/
+backend/data/

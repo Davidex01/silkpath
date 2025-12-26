@@ -1,35 +1,57 @@
+// src/state/createInitialDeal.ts
 import type { DealState } from './dealTypes';
+import { HS_CODES } from '../modules/deal/hsCodes';
 
 export const createInitialDeal = (): DealState => ({
   supplier: {
-    id: 'shenzhen-electronics',
-    name: 'Shenzhen Electronics Ltd',
-    city: 'Shenzhen, CN',
-    category: 'Consumer Electronics',
-    rating: 4.9,
+    id: '',
+    name: 'Select supplier to start',
+    city: '',
+    category: '',
+    rating: 0,
   },
-  item: { name: 'Wireless Headphones', sku: 'WH-500', incoterm: 'FOB Shenzhen' },
+
+  item: {
+    name: 'New Product',
+    sku: '',
+    incoterm: 'FOB',
+  },
+
   stage: 'Draft',
+
   calc: {
-    factoryPriceCNY: 45,
-    qty: 500,
-    logisticsRUB: 120_000,
-    hs: { code: '8518.30' },
+    factoryPriceCNY: 0,
+    qty: 100,
+    logisticsRUB: 0,
+    hs: HS_CODES[0],
   },
+
   fx: {
     rateLive: 13.2,
     locked: false,
     lockedRate: null,
     lockExpiresAt: null,
+    tick: 0,
   },
+
   payment: {
     status: 'Not Funded',
     escrowAmountRUB: 0,
     releaseScheduled: false,
+    releasedAt: null,
+    backendPaymentId: undefined,
   },
+
   logistics: {
-    current: 'Last Mile Delivery',
+    current: 'Not started',
     delivered: false,
     deliveredAt: null,
   },
+
+  chatTranslate: true,
+  chat: [],
+
+  backend: undefined,
+  backendSummary: undefined,
+  chatId: undefined,
 });
