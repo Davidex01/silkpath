@@ -15,7 +15,8 @@ export type IconName =
   | 'play'
   | 'x'
   | 'star'
-  | 'starFill';
+  | 'starFill'
+  | 'bell'; 
 
 interface IconProps extends React.SVGProps<SVGSVGElement> {
   name: IconName;
@@ -163,6 +164,13 @@ export const Icon: React.FC<IconProps> = ({ name, className = '', ...rest }) => 
           {...rest}
         >
           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.77 5.82 22 7 14.14 2 9.27l6.91-1.01L12 2Z" />
+        </svg>
+      );
+    case 'bell':
+      return (
+        <svg {...common} viewBox="0 0 24 24">
+          <path d="M12 2a6 6 0 0 0-6 6v3.5c0 .6-.2 1.2-.5 1.7L4 16h16l-1.5-2.8c-.3-.5-.5-1.1-.5-1.7V8a6 6 0 0 0-6-6Z" />
+          <path d="M10 20a2 2 0 0 0 4 0" />
         </svg>
       );
     default:

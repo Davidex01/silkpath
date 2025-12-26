@@ -13,8 +13,10 @@ from app.services import (
     wallets_fx,
     files as files_service,
     documents as docs_service,
+    logistics as logistics_service,
+    chat as chat_service,
+    notifications as notifications_service,
 )
-
 
 @pytest.fixture(autouse=True)
 def reset_state():
@@ -40,6 +42,11 @@ def reset_state():
 
     files_service.files.clear()
     docs_service.documents.clear()
+
+    chat_service.chats.clear()
+    chat_service.messages_by_chat.clear()
+
+    notifications_service.notifications_by_user.clear()
 
     yield
 

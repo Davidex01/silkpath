@@ -1,15 +1,19 @@
+// web/src/components/layout/TopHeader.tsx
 import React from 'react';
 import { Badge } from '../common/Badge';
 import { Icon } from '../common/Icon';
 import type { ActiveView } from './Sidebar';
 import type { DealState } from '../../state/dealTypes';
+import type { AuthState } from '../../state/authTypes';
+import { NotificationBell } from '../common/NotificationBell';
 
 interface TopHeaderProps {
   active: ActiveView;
   deal: DealState;
+  auth?: AuthState;   // НОВОЕ
 }
 
-export const TopHeader: React.FC<TopHeaderProps> = ({ active, deal }) => {
+export const TopHeader: React.FC<TopHeaderProps> = ({ active, deal, auth }) => {
   const activeName =
     active === 'discovery'
       ? 'Discovery'
@@ -31,7 +35,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ active, deal }) => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          {/* НОВОЕ: колокольчик */}
+          <NotificationBell auth={auth} />
+
           <Badge tone="green" icon={<Icon name="shield" className="w-4 h-4" />}>
             KYB Verified Supplier
           </Badge>
@@ -51,7 +58,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ active, deal }) => {
           </Badge>
           <div className="hidden md:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
-            <div className="text-xs font-semibold text-slate-700">All systems normal</div>
+            <div className="text-xs font-semibold text-slate-700">
+              All systems normal
+            </div>
           </div>
         </div>
       </div>

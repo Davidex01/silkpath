@@ -1,3 +1,4 @@
+// src/app/App.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sidebar, type ActiveView } from '../components/layout/Sidebar';
 import { TopHeader } from '../components/layout/TopHeader';
@@ -18,18 +19,20 @@ import { clamp } from '../components/lib/clamp';
 import { OnboardingLanding } from '../modules/onboarding/OnboardingLanding';
 import { RegisterView } from '../modules/auth/RegisterView';
 import { LoginView } from '../modules/auth/LoginView';
-import { saveAuthEncrypted, loadAuthEncrypted, clearAuth } from '../state/secureSession';
+import { saveAuthEncrypted, loadAuthEncrypted } from '../state/secureSession';
 import type { AuthState, BackendOrg } from '../state/authTypes';
 import { api } from '../api/client';
-import { createDealForSupplier } from '../api/createDealForSupplier';
 import { listWallets } from '../api/wallets';
-import { listPaymentsForDeal } from '../api/payments';
+import { listPaymentsForOrg } from '../api/payments';
 import type { Wallet } from '../api/wallets';
+import { BuyerRFQsView } from '../modules/buyer/BuyerRFQsView';
+import { SupplierShell } from '../modules/suppliers/SupplierShell';
 import type { Payment } from '../api/payments';
 
 type AuthMode = 'onboarding' | 'register' | 'login' | 'app';
+type AppMode = 'buyer' | 'supplier';
 
-// Пока ещё используем демо‑поставщиков (на следующих этапах заменим на /orgs/suppliers)
+// Демо-поставщики
 const SUPPLIERS: DiscoverySupplier[] = [
   {
     id: 'shenzhen-electronics',
@@ -83,22 +86,21 @@ const App: React.FC = () => {
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [mode, setMode] = useState<AuthMode>('onboarding');
 
-  // актуальная орг‑инфо ...
   const [org, setOrg] = useState<BackendOrg | null>(null);
-  const [orgLoading, setOrgLoading] = useState(false);
-  const [orgError, setOrgError] = useState<string | null>(null);
+  const [appMode, setAppMode] = useState<AppMode>('buyer');
 
   const [active, setActive] = useState<ActiveView>('discovery');
   const [deal, setDeal] = useState<DealState>(() => createInitialDeal());
 
-  // кошелек
+  // Кошельки
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [walletsLoading, setWalletsLoading] = useState(false);
   const [walletsError, setWalletsError] = useState<string | null>(null);
 
-  const [dealPayments, setDealPayments] = useState<Payment[]>([]);
-  const [dealPaymentsLoading, setDealPaymentsLoading] = useState(false);
-  const [dealPaymentsError, setDealPaymentsError] = useState<string | null>(null);
+  // FIXED: Платежи организации (для Wallet Recent Activity)
+  const [orgPayments, setOrgPayments] = useState<Payment[]>([]);
+  const [orgPaymentsLoading, setOrgPaymentsLoading] = useState(false);
+  const [orgPaymentsError, setOrgPaymentsError] = useState<string | null>(null);
 
   // Поставщики
   const [suppliers, setSuppliers] = useState<DiscoverySupplier[]>(SUPPLIERS);
@@ -112,6 +114,9 @@ const App: React.FC = () => {
   });
 
   const [query, setQuery] = useState('Wireless Headphones');
+
+  const [showShortlistOnly, setShowShortlistOnly] = useState(false);
+
   const [shortlist, setShortlist] = useState<Set<string>>(() => new Set());
 
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -119,6 +124,8 @@ const App: React.FC = () => {
   // Сайдбарный профиль поставщика
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSupplier, setProfileSupplier] =
+    useState<DiscoverySupplier | null>(null);
+  const [pendingRfqSupplier, setPendingRfqSupplier] =
     useState<DiscoverySupplier | null>(null);
 
   // ===== Helpers =====
@@ -138,20 +145,15 @@ const App: React.FC = () => {
 
   const loadOrgProfile = async (token: string) => {
     try {
-      setOrgLoading(true);
-      setOrgError(null);
       const data = await api<BackendOrg>('/orgs/me', {}, token);
       setOrg(data);
     } catch (e) {
       console.error('Failed to fetch /orgs/me', e);
-      setOrgError('Could not load organization profile');
       addToast({
         tone: 'warn',
         title: 'Backend access error',
         message: 'Could not load organization profile (check API / auth).',
       });
-    } finally {
-      setOrgLoading(false);
     }
   };
 
@@ -160,7 +162,6 @@ const App: React.FC = () => {
       setSuppliersLoading(true);
       setSuppliersError(null);
 
-      // тип можно описать тут локально
       interface OrgFromApi {
         id: string;
         name: string;
@@ -172,7 +173,6 @@ const App: React.FC = () => {
 
       const orgs = await api<OrgFromApi[]>('/orgs/suppliers', {}, token);
 
-      // Маппим Organization -> DiscoverySupplier (гибридные данные)
       const mapped: DiscoverySupplier[] = orgs.map((o, index) => {
         const isCN = o.country === 'CN';
         const baseCity = isCN ? 'Shenzhen, CN' : 'Moscow, RU';
@@ -216,17 +216,6 @@ const App: React.FC = () => {
     }
   };
 
-
-  const handleAuthSuccess = async (a: AuthState) => {
-    setAuth(a);
-    setOrg(a.org);
-    setMode('app');
-    await saveAuthEncrypted(a);
-    void loadOrgProfile(a.tokens.accessToken);
-    void loadSuppliers(a.tokens.accessToken);
-    void loadWallets(a);
-  };
-
   const loadWallets = async (authState: AuthState) => {
     try {
       setWalletsLoading(true);
@@ -241,33 +230,51 @@ const App: React.FC = () => {
     }
   };
 
-  const loadDealPayments = async (authState: AuthState, dealState: DealState) => {
-    if (!dealState.backend?.dealId) {
-      setDealPayments([]);
-      return;
-    }
+  // FIXED: Добавлена функция loadOrgPayments
+  const loadOrgPayments = async (authState: AuthState) => {
     try {
-      setDealPaymentsLoading(true);
-      setDealPaymentsError(null);
-      const data = await listPaymentsForDeal(authState, dealState.backend.dealId);
-      setDealPayments(data);
+      setOrgPaymentsLoading(true);
+      setOrgPaymentsError(null);
+      const data = await listPaymentsForOrg(authState);
+      setOrgPayments(data);
     } catch (e) {
-      console.error('Failed to load deal payments', e);
-      setDealPaymentsError('Could not load payments for this deal');
+      console.error('Failed to load org payments', e);
+      setOrgPaymentsError('Could not load payments');
     } finally {
-      setDealPaymentsLoading(false);
+      setOrgPaymentsLoading(false);
     }
   };
+
+  // FIXED: Функция для обновления финансового состояния (вызывается после платежей)
+  const refreshFinanceState = async () => {
+    if (!auth) return;
+    await Promise.all([loadWallets(auth), loadOrgPayments(auth)]);
+  };
+
+  const handleAuthSuccess = async (a: AuthState) => {
+    setAuth(a);
+    setOrg(a.org);
+    setMode('app');
+
+    setAppMode(a.org.role === 'supplier' ? 'supplier' : 'buyer');
+
+    await saveAuthEncrypted(a);
+    void loadOrgProfile(a.tokens.accessToken);
+    void loadSuppliers(a.tokens.accessToken);
+    void loadWallets(a);
+    void loadOrgPayments(a);
+  };
+
   // ===== Effects =====
 
-  // FX‑тикер, как в прототипе
+  // FX-тикер
   useEffect(() => {
     const interval = setInterval(() => {
       setDeal((d) => {
         if (d.fx.locked) {
           return { ...d, fx: { ...d.fx, tick: d.fx.tick + 1 } };
         }
-        const drift = (Math.random() - 0.5) * 0.1; // ±0.05
+        const drift = (Math.random() - 0.5) * 0.1;
         const next = clamp(d.fx.rateLive + drift, 12.6, 14.3);
         return {
           ...d,
@@ -278,25 +285,29 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // восстановление авторизации из sessionStorage
+  // Восстановление авторизации
   useEffect(() => {
     loadAuthEncrypted().then((stored) => {
       if (stored) {
         setAuth(stored);
         setOrg(stored.org);
         setMode('app');
+        setAppMode(stored.org.role === 'supplier' ? 'supplier' : 'buyer');
         void loadOrgProfile(stored.tokens.accessToken);
-        void loadSuppliers(stored.tokens.accessToken); // ← добавили
+        void loadSuppliers(stored.tokens.accessToken);
+        void loadWallets(stored);
+        void loadOrgPayments(stored);
       }
     });
   }, []);
 
-
+  // FIXED: Обновляем платежи при смене сделки или при переходе на wallet
   useEffect(() => {
-    if (auth && deal.backend?.dealId) {
-      void loadDealPayments(auth, deal);
+    if (auth && active === 'wallet') {
+      void loadOrgPayments(auth);
+      void loadWallets(auth);
     }
-  }, [auth, deal.backend?.dealId]);
+  }, [auth, active]);
 
   // ===== Derived data =====
 
@@ -307,6 +318,7 @@ const App: React.FC = () => {
         if (filters.verified && !s.kyb) return false;
         if (filters.exportLicense && !s.exportLicense) return false;
         if (filters.lowMOQ && !s.lowMOQ) return false;
+        if (showShortlistOnly && !shortlist.has(s.id)) return false;
         if (!q) return true;
         const haystack = [s.name, s.city, s.category, ...s.items]
           .join(' ')
@@ -314,7 +326,7 @@ const App: React.FC = () => {
         return haystack.includes(q);
       })
       .sort((a, b) => b.rating - a.rating);
-  }, [filters, query, suppliers]);
+  }, [filters, query, suppliers, showShortlistOnly, shortlist]);
 
   // ===== Handlers для Discovery/Deal =====
 
@@ -416,6 +428,15 @@ const App: React.FC = () => {
     }
   }
 
+  if (auth && appMode === 'supplier') {
+    return (
+      <>
+        <SupplierShell auth={auth} addToast={addToast} />
+        <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
+      </>
+    );
+  }
+
   // ===== Основной UI (auth есть, mode === 'app') =====
 
   return (
@@ -430,7 +451,7 @@ const App: React.FC = () => {
 
       {/* Правая часть: шапка + контент */}
       <div className="ml-72 min-h-screen flex flex-col">
-        <TopHeader active={active} deal={deal} />
+        <TopHeader active={active} deal={deal} auth={auth!} />
 
         {/* mini journey tabs */}
         <div className="px-6 pt-4">
@@ -498,6 +519,19 @@ const App: React.FC = () => {
               onOpenProfile={handleOpenProfile}
               loading={suppliersLoading}
               error={suppliersError}
+              showShortlistOnly={showShortlistOnly}
+              setShowShortlistOnly={setShowShortlistOnly}
+              addToast={addToast}
+            />
+          ) : active === 'rfqs' ? (
+            <BuyerRFQsView
+              auth={auth!}
+              setDeal={setDeal}
+              addToast={addToast}
+              prefillSupplierOrgId={pendingRfqSupplier?.id ?? null}
+              prefillDefaultItemName={pendingRfqSupplier?.items[0] ?? null}
+              onPrefillConsumed={() => setPendingRfqSupplier(null)}
+              onActivateDealView={() => setActive('deal')}
             />
           ) : active === 'deal' ? (
             <DealWorkspaceView
@@ -506,6 +540,7 @@ const App: React.FC = () => {
               addToast={addToast}
               onGoLogistics={() => setActive('logistics')}
               auth={auth!}
+              onPaymentCreated={refreshFinanceState}
             />
           ) : active === 'logistics' ? (
             <LogisticsView
@@ -513,6 +548,7 @@ const App: React.FC = () => {
               setDeal={setDeal}
               addToast={addToast}
               auth={auth!}
+              onFinanceUpdate={refreshFinanceState}
             />
           ) : active === 'wallet' ? (
             <WalletView
@@ -521,9 +557,9 @@ const App: React.FC = () => {
               wallets={wallets}
               walletsLoading={walletsLoading}
               walletsError={walletsError}
-              payments={dealPayments}
-              paymentsLoading={dealPaymentsLoading}
-              paymentsError={dealPaymentsError}
+              payments={orgPayments}
+              paymentsLoading={orgPaymentsLoading}
+              paymentsError={orgPaymentsError}
             />
           ) : active === 'documents' ? (
             <DocumentsView deal={deal} addToast={addToast} auth={auth!} />
@@ -532,8 +568,7 @@ const App: React.FC = () => {
 
         <footer className="px-6 pb-6 text-xs text-slate-400">
           SilkFlow prototype — React + Vite + Tailwind. Discovery / Deal Workspace /
-          Logistics / Wallet / Documents + Supplier Profile Drawer перенесены из
-          high‑fidelity прототипа.
+          Logistics / Wallet / Documents + Supplier Profile Drawer.
         </footer>
       </div>
 
@@ -543,50 +578,20 @@ const App: React.FC = () => {
         supplier={profileSupplier}
         onClose={() => setProfileOpen(false)}
         onStartNegotiation={handleStartNegotiation}
-        onCreateDeal={async (supplier) => {
+        onCreateRFQ={(supplier) => {
           if (!auth) return;
 
-          try {
-            addToast({
-              tone: 'info',
-              title: 'Creating backend deal…',
-              message: `Creating RFQ & Deal for ${supplier.name}.`,
-            });
+          setPendingRfqSupplier(supplier);
+          setActive('rfqs');
+          setProfileOpen(false);
 
-            const ids = await createDealForSupplier(auth, supplier);
-
-            // Обновляем локальный deal-состояние
-            setDeal((prev) => ({
-              ...prev,
-              supplier: {
-                id: supplier.id,
-                name: supplier.name,
-                city: supplier.city,
-                category: supplier.category,
-                rating: supplier.rating,
-              },
-              backend: ids,
-            }));
-
-            setActive('deal');
-            setProfileOpen(false);
-
-            addToast({
-              tone: 'success',
-              title: 'Deal created on backend',
-              message: `Deal ID: ${ids.dealId} (RFQ ${ids.rfqId}).`,
-            });
-          } catch (e) {
-            console.error('Failed to create backend deal', e);
-            addToast({
-              tone: 'warn',
-              title: 'Failed to create deal',
-              message: 'Please check backend API and try again.',
-            });
-          }
+          addToast({
+            tone: 'info',
+            title: 'RFQ draft prepared',
+            message: `Fill RFQ for ${supplier.name} on the RFQs & Offers screen.`,
+          });
         }}
       />
-
       <ToastStack toasts={toasts} onDismiss={handleDismissToast} />
     </div>
   );

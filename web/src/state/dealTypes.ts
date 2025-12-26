@@ -1,3 +1,4 @@
+// web/src/state/dealTypes.ts
 export type DealStage = 'Draft' | 'Signed' | 'Escrow Funded' | 'Shipped';
 
 export type PaymentStatusUI =
@@ -47,7 +48,6 @@ export interface DealPaymentState {
   escrowAmountRUB: number;
   releaseScheduled: boolean;
   releasedAt: string | null;
-  // на будущее для интеграции с беком:
   backendPaymentId?: string;
 }
 
@@ -74,6 +74,16 @@ export interface BackendIds {
   dealId?: string;
 }
 
+export interface BackendDealSummary {
+  dealId: string;
+  rfqId: string;
+  offerId: string;
+  orderId: string;
+  status: string;          // DealStatus из бэка ('ordered', 'paid', ...)
+  currency: string;        // 'CNY' | 'RUB' | 'USD'
+  totalAmount: number;     // из order.totalAmount
+}
+
 export interface DealState {
   supplier: SupplierInfo;
   item: ItemInfo;
@@ -85,17 +95,9 @@ export interface DealState {
   chatTranslate: boolean;
   chat: DealChatMessage[];
 
-  // Связка с сущностями бэка (можно использовать позже)
   backend?: BackendIds;
   backendSummary?: BackendDealSummary;
-}
 
-export interface BackendDealSummary {
-  dealId: string;
-  rfqId: string;
-  offerId: string;
-  orderId: string;
-  status: string;          // DealStatus из бэка ('ordered', 'paid', ...)
-  currency: string;        // 'CNY' | 'RUB' | 'USD'
-  totalAmount: number;     // из order.totalAmount
+  // backend chat
+  chatId?: string;
 }

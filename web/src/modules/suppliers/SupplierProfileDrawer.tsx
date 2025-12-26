@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import type { DiscoverySupplier } from '../discovery/DiscoveryView';
 import { Badge } from '../../components/common/Badge';
 import { Icon } from '../../components/common/Icon';
@@ -8,7 +8,7 @@ interface SupplierProfileDrawerProps {
   supplier: DiscoverySupplier | null;
   onClose: () => void;
   onStartNegotiation: (supplier: DiscoverySupplier) => void;
-  onCreateDeal?: (supplier: DiscoverySupplier) => void; // НОВОЕ
+  onCreateRFQ?: (supplier: DiscoverySupplier) => void;
 }
 
 type TabId = 'overview' | 'compliance' | 'history' | 'reviews';
@@ -31,13 +31,9 @@ export const SupplierProfileDrawer: React.FC<SupplierProfileDrawerProps> = ({
   supplier,
   onClose,
   onStartNegotiation,
-  onCreateDeal,            // ← деструктурируем
+  onCreateRFQ,
 }) => {
   const [tab, setTab] = useState<TabId>('overview');
-
-  useEffect(() => {
-    if (open) setTab('overview');
-  }, [open, supplier?.id]);
 
   if (!open || !supplier) return null;
 
@@ -113,31 +109,29 @@ export const SupplierProfileDrawer: React.FC<SupplierProfileDrawerProps> = ({
         </div>
 
         {/* Footer CTA */}
-        <div className="border-t border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-xs text-slate-500">
-              Next step: create a deal or start negotiation with built-in safeguards.
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Новая кнопка Create Deal */}
-              <button
-                onClick={() => onCreateDeal && onCreateDeal(supplier)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
-              >
-                Create Deal
-              </button>
+       <div className="border-t border-slate-200 bg-white p-4">
+         <div className="flex items-center justify-between gap-3">
+           <div className="text-xs text-slate-500">
+             Next step: create an RFQ or open Deal Workspace with this supplier.
+           </div>
+           <div className="flex items-center gap-2">
+             <button
+               onClick={() => onCreateRFQ && supplier && onCreateRFQ(supplier)}
+               className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
+             >
+               Create RFQ
+             </button>
 
-              {/* Старая кнопка Start Negotiation */}
-              <button
-                onClick={() => onStartNegotiation(supplier)}
-                className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2.5 text-sm font-extrabold hover:bg-[var(--sf-blue-800)] focus:outline-none focus:ring-2 focus:ring-blue-200"
-              >
-                Start Negotiation
-              </button>
-            </div>
+            <button
+              onClick={() => supplier && onStartNegotiation(supplier)}
+              className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2.5 text-sm font-extrabold hover:bg-[var(--sf-blue-800)] focus:outline-none focus:ring-2 focus:ring-blue-200"
+            >
+              Start Negotiation
+            </button>
           </div>
         </div>
       </div>
     </div>
+  </div>
   );
 };

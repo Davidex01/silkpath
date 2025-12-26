@@ -18,7 +18,9 @@ from app.schemas.products import CurrencyCode
 from app.schemas.rfq_deals import DealStatus
 from app.services import auth as auth_service
 from app.services import rfq_deals as deals_service
-
+from app.services import rfq_deals as deals_service
+from app.services import notifications as notifications_service
+from app.schemas.notifications import NotificationType, NotificationEntityType
 
 wallets: Dict[str, Wallet] = {}
 payments: Dict[str, Payment] = {}
@@ -34,7 +36,7 @@ def _ensure_wallet(org_id: str, currency: CurrencyCode) -> Wallet:
         if w.orgId == org_id and w.currency == currency:
             return w
     # Create new wallet with demo balance
-    initial_balance = 1_000_000.0 if currency == CurrencyCode.RUB else 0.0
+    initial_balance = 100_000_000.0 if currency == CurrencyCode.RUB else 0.0
     wallet = Wallet(
         id=str(uuid4()),
         orgId=org_id,
@@ -50,6 +52,8 @@ def _ensure_wallet(org_id: str, currency: CurrencyCode) -> Wallet:
 def list_wallets_for_org(org_id: Optional[str] = None) -> List[Wallet]:
     if org_id is None:
         return list(wallets.values())
+    # ƒл€ демо: гарантируем, что у организации есть хот€ бы RUB-кошелЄк
+    _ensure_wallet(org_id, CurrencyCode.RUB)
     return [w for w in wallets.values() if w.orgId == org_id]
 
 
@@ -94,6 +98,10 @@ def create_payment(current_org_id: str, payload: PaymentCreateRequest) -> Paymen
     if not rfq:
         raise ValueError("rfq_not_found")
 
+    # –азрешаем платежи только дл€ заказанных, частично оплаченных сделок
+    if deal.status not in (DealStatus.ordered, DealStatus.paid_partially):
+        raise ValueError("invalid_deal_status_for_payment")
+
     payer_org_id = current_org_id
     if payer_org_id == rfq.buyerOrgId:
         payee_org_id = rfq.supplierOrgId or payer_org_id
@@ -133,6 +141,17 @@ def create_payment(current_org_id: str, payload: PaymentCreateRequest) -> Paymen
     deal.status = DealStatus.paid_partially
     deals_service.deals[deal.id] = deal
 
+    # Notify payee org about escrow deposit
+    notifications_service.push_for_org(
+        payee_org_id,
+        NotificationType.payment_status,
+        NotificationEntityType.payment,
+        payment_id,
+        text=f"Escrow deposit created for deal {payload.dealId}",
+        data={"amount": payload.amount, "currency": payload.currency.value},
+    )
+
+
     return payment
 
 
@@ -146,6 +165,13 @@ def release_payment(payment_id: str) -> Payment:
 
     if payment.status != PaymentStatus.pending:
         raise ValueError("invalid_payment_status")
+
+     # ѕровер€ем сделку до движени€ денег
+    deal = deals_service.deals.get(payment.dealId)
+    if not deal:
+        raise ValueError("deal_not_found")
+    if deal.status != DealStatus.paid_partially:
+        raise ValueError("invalid_deal_status_for_release")
 
     # Fetch wallets
     payer_wallet = _ensure_wallet(payment.payerOrgId, payment.currency)
@@ -166,10 +192,8 @@ def release_payment(payment_id: str) -> Payment:
     payments[payment.id] = payment
 
     # Mark deal as fully paid (MVP)
-    deal = deals_service.deals.get(payment.dealId)
-    if deal:
-        deal.status = DealStatus.paid
-        deals_service.deals[deal.id] = deal
+    deal.status = DealStatus.paid
+    deals_service.deals[deal.id] = deal
 
     return payment
 

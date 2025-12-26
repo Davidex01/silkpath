@@ -63,3 +63,12 @@ export async function listPaymentsForDeal(
   const params = new URLSearchParams({ dealId });
   return api<Payment[]>(`/payments?${params.toString()}`, {}, token);
 }
+
+/** Получить ВСЕ платежи текущей организации (как платильщика или получателя) */
+export async function listPaymentsForOrg(
+  auth: AuthState,
+): Promise<Payment[]> {
+  const token = auth.tokens.accessToken;
+  // без dealId => backend вернёт все платежи для org_id из токена
+  return api<Payment[]>('/payments', {}, token);
+}

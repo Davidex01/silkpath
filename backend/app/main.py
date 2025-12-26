@@ -1,3 +1,4 @@
+# app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,6 +11,8 @@ from app.api.v1 import wallets_fx_payments as wallets_fx_routes
 from app.api.v1 import analytics as analytics_routes
 from app.api.v1 import documents as documents_routes
 from app.api.v1 import logistics as logistics_routes
+from app.api.v1 import chats as chats_routes
+from app.api.v1 import notifications as notifications_routes
 
 app = FastAPI(
     title="SilkFlow API",
@@ -46,3 +49,5 @@ app.include_router(wallets_fx_routes.router)
 app.include_router(analytics_routes.router)
 app.include_router(documents_routes.router)
 app.include_router(logistics_routes.router)
+app.include_router(chats_routes.router)
+app.include_router(notifications_routes.router)   

@@ -1,8 +1,8 @@
 import React from 'react';
-import { Icon } from '../common/Icon';
+import { Icon, type IconName } from '../common/Icon';
 import type { DealState } from '../../state/dealTypes';
 
-export type ActiveView = 'discovery' | 'deal' | 'wallet' | 'logistics' | 'documents';
+export type ActiveView = 'discovery' | 'rfqs' | 'deal' | 'wallet' | 'logistics' | 'documents';
 
 interface SidebarProps {
   active: ActiveView;
@@ -12,8 +12,14 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ active, setActive, deal, orgName }) => {
-  const nav: { id: ActiveView; label: string; icon: any; badge: string | null }[] = [
+  const nav: { id: ActiveView; label: string; icon: IconName; badge: string | null }[] = [
     { id: 'discovery', label: 'Search & Suppliers', icon: 'search', badge: null },
+    {
+      id: 'rfqs',
+      label: 'RFQs & Offers',
+      icon: 'deals',
+      badge: null,
+    },
     {
       id: 'deal',
       label: 'My Deals',

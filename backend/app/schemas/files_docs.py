@@ -21,6 +21,7 @@ class DocumentType(str, Enum):
     invoice = "invoice"
     packing_list = "packing_list"
     specification = "specification"
+    customs_declaration = "customs_declaration"
     other = "other"
 
 

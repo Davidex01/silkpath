@@ -1,6 +1,5 @@
 import { api } from './client';
 import type { AuthState } from '../state/authTypes';
-import type { DiscoverySupplier } from '../modules/discovery/DiscoveryView';
 
 export interface BackendDealIds {
   rfqId: string;
@@ -8,31 +7,39 @@ export interface BackendDealIds {
   orderId: string;
   dealId: string;
 }
+export interface CreateDealSupplier {
+    id: string;
+    name: string;
+    city: string;
+    items?: string[];
+}
 
 export async function createDealForSupplier(
-  auth: AuthState,
-  supplier: DiscoverySupplier,
+    auth: AuthState,
+    supplier: CreateDealSupplier,
 ): Promise<BackendDealIds> {
-  const token = auth.tokens.accessToken;
-  const supplierOrgId = supplier.id;
+    const token = auth.tokens.accessToken;
+    const supplierOrgId = supplier.id;
 
-  // 1. Create RFQ
-  const rfq = await api<{ id: string }>('/rfqs', {
-    method: 'POST',
-    body: JSON.stringify({
-      supplierOrgId,
-      items: [
-        {
-          productId: null,
-          name: supplier.items[0] || 'Demo Item',
-          qty: 100,
-          unit: 'piece',
-          targetPrice: 10,
-          notes: `RFQ created from UI for supplier ${supplier.name}`,
-        },
-      ],
-    }),
-  }, token);
+    const firstItemName = supplier.items?.[0] ?? 'Demo Item';
+
+    // 1. Create RFQ
+    const rfq = await api<{ id: string }>('/rfqs', {
+        method: 'POST',
+        body: JSON.stringify({
+            supplierOrgId,
+            items: [
+                {
+                    productId: null,
+                    name: firstItemName,
+                    qty: 100,
+                    unit: 'piece',
+                    targetPrice: 10,
+                    notes: `RFQ created from UI for supplier ${supplier.name}`,
+                },
+            ],
+        }),
+    }, token);
 
   const rfqId = rfq.id;
 
@@ -46,16 +53,16 @@ export async function createDealForSupplier(
       method: 'POST',
       body: JSON.stringify({
         currency: 'CNY',
-        items: [
-          {
-            rfqItemIndex: 0,
-            productId: null,
-            name: supplier.items[0] || 'Demo Item',
-            qty: 100,
-            unit: 'piece',
-            price: 10,
-            subtotal: 100 * 10,
-          },
+          items: [
+              {
+                  rfqItemIndex: 0,
+                  productId: null,
+                  name: firstItemName,
+                  qty: 100,
+                  unit: 'piece',
+                  price: 10,
+                  subtotal: 100 * 10,
+              },
         ],
         incoterms: supplier.city.includes('Shenzhen') ? 'FOB Shenzhen' : 'FOB',
         paymentTerms: '100% prepayment',

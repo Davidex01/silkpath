@@ -7,17 +7,24 @@ from app.schemas.analytics import DealCostBreakdown, DealUnitEconomicsResult
 from app.schemas.products import CurrencyCode
 from app.services import rfq_deals as deals_service
 
-
-# Shares for MVP (as fractions of revenue)
-PRODUCT_SHARE = 0.7
-LOGISTICS_SHARE = 0.1
-DUTIES_SHARE = 0.05
-FX_SHARE = 0.02
-COMMISSIONS_SHARE = 0.01
-OTHER_SHARE = 0.0  # we keep it 0 for now
+# Cost structure shares (as fraction of revenue).
+# These коэффициенты можно потом вынести в конфиг.
+PRODUCT_SHARE = 0.75       # Factory cost / COGS
+LOGISTICS_SHARE = 0.08     # Freight, local delivery etc.
+DUTIES_SHARE = 0.07        # Duties + VAT
+FX_SHARE = 0.03            # FX slippage / conversion
+COMMISSIONS_SHARE = 0.02   # Platform / banking fees
+OTHER_SHARE = 0.0          # Reserve for extra costs
 
 
 def calc_deal_unit_economics(deal_id: str) -> Optional[DealUnitEconomicsResult]:
+    """
+    Calculate unit economics summary for a deal.
+
+    For MVP we assume:
+      - revenue = order.totalAmount (in mainCurrency),
+      - each cost component is a share of revenue.
+    """
     deal = deals_service.deals.get(deal_id)
     if not deal:
         return None
@@ -30,7 +37,6 @@ def calc_deal_unit_economics(deal_id: str) -> Optional[DealUnitEconomicsResult]:
     currency: CurrencyCode = order.currency
 
     if revenue <= 0:
-        # Degenerate case, return zeros
         breakdown = DealCostBreakdown()
         return DealUnitEconomicsResult(
             dealId=deal.id,
@@ -51,7 +57,12 @@ def calc_deal_unit_economics(deal_id: str) -> Optional[DealUnitEconomicsResult]:
     other_cost = revenue * OTHER_SHARE
 
     total_cost = (
-        product_cost + logistics_cost + duties_taxes + fx_cost + commissions + other_cost
+        product_cost
+        + logistics_cost
+        + duties_taxes
+        + fx_cost
+        + commissions
+        + other_cost
     )
     gross_margin_abs = revenue - total_cost
     gross_margin_pct = (gross_margin_abs / revenue) * 100.0
@@ -66,10 +77,10 @@ def calc_deal_unit_economics(deal_id: str) -> Optional[DealUnitEconomicsResult]:
     )
 
     notes = (
-        "MVP unit economics: shares applied over order.totalAmount — "
-        f"product {PRODUCT_SHARE*100:.0f}%, logistics {LOGISTICS_SHARE*100:.0f}%, "
-        f"duties {DUTIES_SHARE*100:.0f}%, fx {FX_SHARE*100:.0f}%, "
-        f"commissions {COMMISSIONS_SHARE*100:.0f}%."
+        "MVP unit economics: cost shares applied over order.totalAmount — "
+        f"product {PRODUCT_SHARE*100:.1f}%, logistics {LOGISTICS_SHARE*100:.1f}%, "
+        f"duties {DUTIES_SHARE*100:.1f}%, fx {FX_SHARE*100:.1f}%, "
+        f"commissions {COMMISSIONS_SHARE*100:.1f}%."
     )
 
     return DealUnitEconomicsResult(
