@@ -1,6 +1,9 @@
-// web/src/modules/supplier/SupplierDealsChatView.tsx
+// src/modules/suppliers/SupplierDealsChatView.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import type { AuthState } from '../../state/authTypes';
+import { Badge } from '../../components/common/Badge';
+import { Icon } from '../../components/common/Icon';
+import type { Toast } from '../../components/common/ToastStack';
 import { listSupplierDeals, type DealDto } from '../../api/deals';
 import {
   getOrCreateChatForDeal,
@@ -9,59 +12,82 @@ import {
   translateMessageInChat,
   type MessageDto,
 } from '../../api/chat';
-import { Badge } from '../../components/common/Badge';
-import { Icon } from '../../components/common/Icon';
-import type { Toast } from '../../components/common/ToastStack';
 
 interface SupplierDealsChatViewProps {
   auth: AuthState;
   addToast: (t: Omit<Toast, 'id'>) => void;
 }
 
-type BadgeTone = 'gray' | 'blue' | 'green' | 'orange';
-type ChatSide = 'left' | 'right';
+// ===== Компонент подсказки =====
+const HelpTip: React.FC<{ title: string; children: React.ReactNode }> = ({
+  title,
+  children,
+}) => {
+  const [open, setOpen] = useState(false);
 
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={() => setOpen(!open)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="w-5 h-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 grid place-items-center text-xs font-bold transition"
+        aria-label="Help"
+      >
+        ?
+      </button>
+      {open && (
+        <div className="absolute z-50 left-6 top-0 w-72 rounded-xl border border-slate-200 bg-white shadow-lg p-3 sf-fade-in">
+          <div className="text-xs font-bold text-slate-900 mb-1">{title}</div>
+          <div className="text-xs text-slate-600 leading-relaxed">{children}</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===== Компонент сообщения =====
 interface ChatBubbleProps {
-  side: ChatSide;
+  isMe: boolean;
   author: string;
   text: string;
-  subText?: string;
+  translatedText?: string;
   ts: string;
 }
 
 const ChatBubble: React.FC<ChatBubbleProps> = ({
-  side,
+  isMe,
   author,
   text,
-  subText,
+  translatedText,
   ts,
 }) => {
-  const align = side === 'left' ? 'items-start' : 'items-end';
-  const bubble =
-    side === 'left'
-      ? 'bg-white text-slate-900 ring-slate-200'
-      : 'bg-[var(--sf-blue-900)] text-white ring-blue-950/30';
-
   return (
-    <div className={`flex ${align} gap-2`}>
-      <div className="max-w-[80%]">
-        <div className="text-[11px] text-slate-500 mb-0.5">
-          {author} •{' '}
-          {new Date(ts).toLocaleTimeString('ru-RU', {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
+    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[75%] ${isMe ? 'items-end' : 'items-start'}`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs text-slate-500">{author}</span>
+          <span className="text-xs text-slate-400">
+            {new Date(ts).toLocaleTimeString('ru-RU', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
         </div>
         <div
-          className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ring-1 ring-inset ${bubble}`}
+          className={
+            'rounded-2xl px-4 py-2.5 ' +
+            (isMe
+              ? 'bg-blue-600 text-white rounded-br-md'
+              : 'bg-white border border-slate-200 text-slate-900 rounded-bl-md')
+          }
         >
-          {text}
+          <div className="text-sm">{translatedText || text}</div>
         </div>
-        {subText ? (
-          <div className="mt-1 rounded-xl bg-slate-50 text-xs text-slate-600 px-3 py-2 border border-slate-200">
-            {subText}
+        {translatedText && translatedText !== text && (
+          <div className="mt-1 text-xs text-slate-400 italic">
+            Оригинал: {text}
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );
@@ -80,23 +106,20 @@ export const SupplierDealsChatView: React.FC<SupplierDealsChatViewProps> = ({
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageDto[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
-  const [chatError, setChatError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
 
-  // Загрузка списка сделок supplier-а
+  // Загрузка сделок
   useEffect(() => {
     const loadDeals = async () => {
       try {
         setDealsLoading(true);
         setDealsError(null);
         const data = await listSupplierDeals(auth);
-        setDeals(
-          data.slice().sort((a, b) => (a.id > b.id ? -1 : 1)), // простой порядок
-        );
+        setDeals(data.sort((a, b) => (a.id > b.id ? -1 : 1)));
       } catch (e) {
         console.error('Failed to load supplier deals', e);
-        setDealsError('Could not load deals for this supplier.');
+        setDealsError('Не удалось загрузить сделки');
       } finally {
         setDealsLoading(false);
       }
@@ -105,17 +128,23 @@ export const SupplierDealsChatView: React.FC<SupplierDealsChatViewProps> = ({
     void loadDeals();
   }, [auth]);
 
-  const totalDeals = deals.length;
-  const totalPaid = useMemo(
-    () => deals.filter((d) => d.status === 'paid').length,
-    [deals],
-  );
+  const stats = useMemo(() => {
+    const total = deals.length;
+    const paid = deals.filter((d) => d.status === 'paid').length;
+    const inProgress = deals.filter(
+      (d) => d.status === 'ordered' || d.status === 'paid_partially',
+    ).length;
+    return { total, paid, inProgress };
+  }, [deals]);
 
-  const ensureChatForDeal = async (deal: DealDto) => {
+  // Загрузка чата при выборе сделки
+  const handleSelectDeal = async (deal: DealDto) => {
+    setSelectedDeal(deal);
+    setMessages([]);
+    setChatId(null);
+
     try {
       setChatLoading(true);
-      setChatError(null);
-
       const chat = await getOrCreateChatForDeal(auth, deal.id);
       setChatId(chat.id);
 
@@ -123,44 +152,40 @@ export const SupplierDealsChatView: React.FC<SupplierDealsChatViewProps> = ({
       setMessages(msgs);
     } catch (e) {
       console.error('Failed to init chat for deal', e);
-      setChatError('Could not load chat for this deal.');
-      setMessages([]);
-      setChatId(null);
+      addToast({
+        tone: 'warn',
+        title: 'Ошибка чата',
+        message: 'Не удалось загрузить историю сообщений.',
+      });
     } finally {
       setChatLoading(false);
     }
   };
 
-  const handleSelectDeal = (deal: DealDto) => {
-    setSelectedDeal(deal);
-    void ensureChatForDeal(deal);
-  };
-
-  // Polling чата
+  // Polling сообщений
   useEffect(() => {
-    if (!auth || !chatId || !selectedDeal) return;
+    if (!chatId) return;
 
-    const interval = setInterval(() => {
-      listChatMessagesByChatId(auth, chatId)
-        .then((msgs) => setMessages(msgs))
-        .catch((e) =>
-          console.error('Failed to poll supplier chat messages', e),
-        );
+    const interval = setInterval(async () => {
+      try {
+        const msgs = await listChatMessagesByChatId(auth, chatId);
+        setMessages(msgs);
+      } catch (e) {
+        console.error('Failed to poll messages', e);
+      }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [auth, chatId, selectedDeal]);
+  }, [auth, chatId]);
 
-  // Автоперевод сообщений от покупателя → китайский (zh-CN)
+  // Автоперевод входящих сообщений на китайский
   useEffect(() => {
-    const runAutoTranslate = async () => {
-      if (!auth || !chatId) return;
+    const autoTranslate = async () => {
+      if (!chatId) return;
 
-      // ищем первое сообщение НЕ от текущего пользователя без перевода на zh
       const untranslated = messages.find((m) => {
         if (m.senderId === auth.user.id) return false;
-        const tr = m.translations || [];
-        const hasZh = tr.some((t) =>
+        const hasZh = m.translations?.some((t) =>
           t.lang.toLowerCase().startsWith('zh'),
         );
         return !hasZh;
@@ -170,240 +195,329 @@ export const SupplierDealsChatView: React.FC<SupplierDealsChatViewProps> = ({
 
       try {
         await translateMessageInChat(auth, chatId, untranslated.id, 'zh-CN');
-        // polling обновит messages чуть позже
       } catch (e) {
-        console.error('Failed to auto-translate supplier message', e);
+        console.error('Failed to auto-translate', e);
       }
     };
 
-    void runAutoTranslate();
+    void autoTranslate();
   }, [auth, chatId, messages]);
 
+  // Отправка сообщения
   const handleSend = async () => {
     const text = draft.trim();
-    if (!text) return;
-    if (!chatId || !selectedDeal) {
-      addToast({
-        tone: 'warn',
-        title: 'Chat not ready',
-        message: 'Select a deal first.',
-      });
-      return;
-    }
+    if (!text || !chatId) return;
 
     try {
       setSending(true);
       const msg = await sendChatMessageToChat(auth, chatId, {
         text,
-        lang: 'zh-CN', // условный язык поставщика
+        lang: 'zh-CN',
       });
       setMessages((prev) => [...prev, msg]);
       setDraft('');
     } catch (e) {
-      console.error('Failed to send supplier chat message', e);
+      console.error('Failed to send message', e);
       addToast({
         tone: 'warn',
-        title: 'Failed to send message',
-        message: 'Please check backend API and try again.',
+        title: 'Ошибка отправки',
+        message: 'Не удалось отправить сообщение.',
       });
     } finally {
       setSending(false);
     }
   };
 
-  return (
-    <div className="p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-slate-900 text-xl font-bold">
-            Deals &amp; Chat (Supplier)
-          </div>
-          <div className="mt-1 text-sm text-slate-600">
-            See your confirmed deals and chat with buyers.
-          </div>
-          {dealsLoading ? (
-            <div className="mt-1 text-xs text-blue-600">
-              Loading deals from backend…
-            </div>
-          ) : dealsError ? (
-            <div className="mt-1 text-xs text-orange-700">{dealsError}</div>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="green">Total deals: {totalDeals}</Badge>
-          <Badge tone="blue">Paid: {totalPaid}</Badge>
-          <Badge tone="gray">
-            Auto-translate: ON (Buyer → CN)
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'paid':
+        return (
+          <Badge tone="green" icon={<Icon name="check" className="w-3 h-3" />}>
+            Оплачено
           </Badge>
+        );
+      case 'paid_partially':
+        return (
+          <Badge tone="orange" icon={<Icon name="clock" className="w-3 h-3" />}>
+            Частично
+          </Badge>
+        );
+      case 'ordered':
+        return (
+          <Badge tone="blue" icon={<Icon name="clock" className="w-3 h-3" />}>
+            Заказ
+          </Badge>
+        );
+      case 'closed':
+        return <Badge tone="gray">Закрыто</Badge>;
+      default:
+        return <Badge tone="gray">{status}</Badge>;
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* ===== STATS ===== */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="sf-card rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 grid place-items-center">
+              <Icon name="deals" className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">Всего сделок</div>
+              <div className="text-xl font-extrabold text-slate-900 sf-number">
+                {stats.total}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="sf-card rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 grid place-items-center">
+              <Icon name="clock" className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs text-blue-700">В работе</div>
+              <div className="text-xl font-extrabold text-blue-900 sf-number">
+                {stats.inProgress}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="sf-card rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 grid place-items-center">
+              <Icon name="check" className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs text-emerald-700">Оплачено</div>
+              <div className="text-xl font-extrabold text-emerald-900 sf-number">
+                {stats.paid}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Список сделок */}
-        <div className="xl:col-span-1 sf-card rounded-2xl border border-slate-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-            <div className="text-sm font-bold text-slate-900">Deals</div>
-            <div className="text-xs text-slate-500">
-              {deals.length} record{deals.length !== 1 ? 's' : ''}
-            </div>
-          </div>
-          <div className="max-h-[420px] overflow-y-auto sf-scrollbar">
-            {deals.map((d) => {
-              const isSelected = selectedDeal?.id === d.id;
-              const statusTone: BadgeTone =
-                d.status === 'paid'
-                  ? 'green'
-                  : d.status === 'paid_partially'
-                  ? 'orange'
-                  : 'gray';
-              return (
-                <button
-                  key={d.id}
-                  onClick={() => handleSelectDeal(d)}
-                  className={
-                    'w-full flex items-center justify-between px-4 py-3 text-left border-b border-slate-100 transition ' +
-                    (isSelected ? 'bg-blue-50' : 'bg-white hover:bg-slate-50')
-                  }
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-900 sf-number truncate">
-                      {d.id.slice(0, 8)}…
-                    </div>
-                    <div className="mt-0.5 text-xs text-slate-600">
-                      Currency: {d.mainCurrency} • Status: {d.status}
-                    </div>
-                  </div>
-                  <div className="shrink-0">
-                    <Badge tone={statusTone}>{d.status}</Badge>
-                  </div>
-                </button>
-              );
-            })}
-            {deals.length === 0 && !dealsLoading ? (
-              <div className="px-4 py-6 text-sm text-slate-500">
-                No deals yet. Once a buyer accepts your offer, the deal will
-                appear here.
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Чат по выбранной сделке */}
-        <div className="xl:col-span-2 sf-card rounded-2xl border border-slate-200 bg-white flex flex-col">
-          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-bold text-slate-900">Deal chat</div>
-              <div className="mt-0.5 text-xs text-slate-600">
-                {selectedDeal
-                  ? `Deal ${selectedDeal.id.slice(
-                      0,
-                      8,
-                    )}… (${selectedDeal.mainCurrency})`
-                  : 'Select a deal on the left to start chatting.'}
-              </div>
-              {chatLoading ? (
-                <div className="mt-1 text-xs text-blue-600">
-                  Loading chat…
+      {/* ===== MAIN CONTENT ===== */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* ===== DEALS LIST ===== */}
+        <div className="xl:col-span-1">
+          <div className="sf-card rounded-2xl border border-slate-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-bold text-slate-900">Сделки</div>
+                  <HelpTip title="Ваши сделки">
+                    Сделки создаются после того, как покупатель принимает ваш
+                    Offer. Здесь можно общаться с покупателем и отслеживать
+                    статус оплаты.
+                  </HelpTip>
                 </div>
-              ) : chatError ? (
-                <div className="mt-1 text-xs text-orange-700">
-                  {chatError}
+                <div className="text-xs text-slate-500">
+                  {dealsLoading ? 'Загрузка…' : `${deals.length} сделок`}
+                </div>
+              </div>
+            </div>
+
+            {dealsError && (
+              <div className="px-4 py-3 bg-orange-50 border-b border-orange-200">
+                <div className="text-xs text-orange-700">{dealsError}</div>
+              </div>
+            )}
+
+            <div className="max-h-[500px] overflow-y-auto sf-scrollbar">
+              {deals.length > 0 ? (
+                <div className="divide-y divide-slate-100">
+                  {deals.map((deal) => {
+                    const isSelected = selectedDeal?.id === deal.id;
+                    return (
+                      <button
+                        key={deal.id}
+                        onClick={() => handleSelectDeal(deal)}
+                        className={
+                          'w-full text-left px-4 py-3 transition ' +
+                          (isSelected
+                            ? 'bg-blue-50 border-l-2 border-blue-600'
+                            : 'hover:bg-slate-50')
+                        }
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-900 sf-number truncate">
+                              {deal.id.slice(0, 12)}…
+                            </div>
+                            <div className="mt-0.5 text-xs text-slate-500">
+                              {deal.mainCurrency} •{' '}
+                              {deal.logistics?.current || 'Ожидание'}
+                            </div>
+                          </div>
+                          {getStatusBadge(deal.status)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : !dealsLoading ? (
+                <div className="px-4 py-8 text-center">
+                  <div className="mx-auto w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 grid place-items-center mb-3">
+                    <Icon name="deals" className="w-6 h-6" />
+                  </div>
+                  <div className="text-sm font-semibold text-slate-700">
+                    Пока нет сделок
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Сделки появятся после принятия вашего Offer покупателем.
+                  </div>
                 </div>
               ) : null}
             </div>
-            {selectedDeal ? (
-              <Badge tone="gray" icon={<Icon name="truck" className="w-4 h-4" />}>
-                {selectedDeal.logistics?.current || 'Logistics: n/a'}
-              </Badge>
-            ) : null}
           </div>
+        </div>
 
-          <div className="flex-1 p-4 sf-scrollbar overflow-y-auto">
-            {selectedDeal ? (
-              messages.length > 0 ? (
-                <div className="space-y-3">
-                  {messages.map((m) => {
-                     const isMe = m.senderId === auth.user.id;
-                     const side: ChatSide = isMe ? 'right' : 'left';
-                     let mainText = m.text;
-                     let subText: string | undefined = undefined;
-
-                     if (!isMe && m.translations && m.translations.length > 0) {
-                       const zhTr = m.translations.find((t) =>
-                       t.lang.toLowerCase().startsWith('zh'),
-                       );
-                       if (zhTr) {
-                         // Для демо: показываем только перевод как основной текст.
-                         // Оригинал под ним не дублируем.
-                         mainText = zhTr.text;
-                         subText = undefined;
-                       }
-                     }
-
-                     return (
-                       <ChatBubble
-                         key={m.id}
-                         side={side}
-                         author={isMe ? 'You' : 'Buyer'}
-                         text={mainText}
-                         subText={subText}
-                         ts={m.createdAt}
-                       />
-                     );
-                  })}
+        {/* ===== CHAT ===== */}
+        <div className="xl:col-span-2">
+          <div className="sf-card rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col h-[600px]">
+            {/* Chat header */}
+            <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-bold text-slate-900">
+                    {selectedDeal ? 'Чат по сделке' : 'Выберите сделку'}
+                  </div>
+                  {selectedDeal && (
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      ID: {selectedDeal.id.slice(0, 12)}… • {selectedDeal.mainCurrency}
+                    </div>
+                  )}
                 </div>
-              ) : chatLoading ? (
-                <div className="text-xs text-slate-500">Loading messages…</div>
-              ) : (
-                <div className="text-xs text-slate-500">
-                  No messages yet. Start the conversation with the buyer.
-                </div>
-              )
-            ) : (
-              <div className="text-xs text-slate-500">
-                Select a deal to see chat history.
+                {selectedDeal && (
+                  <div className="flex items-center gap-2">
+                    <Badge tone="blue">
+                      Автоперевод RU→CN
+                    </Badge>
+                    {getStatusBadge(selectedDeal.status)}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-
-          {/* input */}
-          <div className="px-4 py-3 border-t border-slate-200 bg-slate-50">
-            <div className="flex items-end gap-2">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder={
-                  selectedDeal
-                    ? 'Напишите покупателю… (условия, сроки, статус отгрузки)'
-                    : 'Выберите сделку, чтобы написать покупателю.'
-                }
-                disabled={!selectedDeal}
-                rows={2}
-                className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:bg-slate-100 disabled:text-slate-400"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    void handleSend();
-                  }
-                }}
-              />
-              <button
-                onClick={() => void handleSend()}
-                disabled={!selectedDeal || sending}
-                className={
-                  'rounded-xl px-4 py-2.5 text-sm font-semibold ' +
-                  (!selectedDeal
-                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                    : sending
-                    ? 'bg-slate-400 text-white cursor-wait'
-                    : 'bg-[var(--sf-blue-900)] text-white hover:bg-[var(--sf-blue-800)]')
-                }
-              >
-                Send
-              </button>
             </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Press Enter to send, Shift+Enter for new line.
+
+            {/* Chat messages */}
+            <div className="flex-1 p-4 overflow-y-auto sf-scrollbar bg-slate-50">
+              {selectedDeal ? (
+                chatLoading ? (
+                  <div className="text-center text-xs text-slate-500">
+                    Загрузка сообщений…
+                  </div>
+                ) : messages.length > 0 ? (
+                  <div className="space-y-4">
+                    {messages.map((m) => {
+                      const isMe = m.senderId === auth.user.id;
+                      const zhTr = m.translations?.find((t) =>
+                        t.lang.toLowerCase().startsWith('zh'),
+                      );
+                      return (
+                        <ChatBubble
+                          key={m.id}
+                          isMe={isMe}
+                          author={isMe ? 'Вы' : 'Покупатель'}
+                          text={m.text}
+                          translatedText={!isMe ? zhTr?.text : undefined}
+                          ts={m.createdAt}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="mx-auto w-12 h-12 rounded-2xl bg-white border border-slate-200 text-slate-400 grid place-items-center mb-3">
+                      <Icon name="deals" className="w-6 h-6" />
+                    </div>
+                    <div className="text-sm font-semibold text-slate-700">
+                      Начните диалог
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Напишите покупателю для уточнения деталей заказа.
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="text-center py-8">
+                  <div className="mx-auto w-12 h-12 rounded-2xl bg-white border border-slate-200 text-slate-400 grid place-items-center mb-3">
+                    <Icon name="deals" className="w-6 h-6" />
+                  </div>
+                  <div className="text-sm font-semibold text-slate-700">
+                    Выберите сделку слева
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Чат станет доступен после выбора.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Chat input */}
+            <div className="px-4 py-3 border-t border-slate-200 bg-white">
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder={
+                      selectedDeal
+                        ? 'Напишите сообщение… (Enter для отправки)'
+                        : 'Выберите сделку для начала общения'
+                    }
+                    disabled={!selectedDeal}
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:bg-slate-50 disabled:text-slate-400"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        void handleSend();
+                      }
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={() => void handleSend()}
+                  disabled={!selectedDeal || sending || !draft.trim()}
+                  className={
+                    'rounded-xl px-4 py-3 text-sm font-semibold transition ' +
+                    (!selectedDeal || sending || !draft.trim()
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700')
+                  }
+                >
+                  {sending ? '…' : 'Отправить'}
+                </button>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                <span>Shift+Enter для новой строки</span>
+                <span className="flex items-center gap-1">
+                  <Icon name="spark" className="w-3 h-3" />
+                  Автоперевод включён
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== INFO CARD ===== */}
+      <div className="sf-card rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <div className="flex items-start gap-3">
+          <div className="text-emerald-600 mt-0.5">
+            <Icon name="shield" className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-emerald-900">
+              Защита через эскроу
+            </div>
+            <div className="mt-1 text-xs text-emerald-800">
+              Все платежи проходят через защищённый эскроу-счёт. Вы получите
+              деньги после подтверждения доставки покупателем.
             </div>
           </div>
         </div>

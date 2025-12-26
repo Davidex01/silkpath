@@ -1,3 +1,4 @@
+// src/app/App.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sidebar, type ActiveView } from '../components/layout/Sidebar';
 import { TopHeader } from '../components/layout/TopHeader';
@@ -22,7 +23,7 @@ import { saveAuthEncrypted, loadAuthEncrypted } from '../state/secureSession';
 import type { AuthState, BackendOrg } from '../state/authTypes';
 import { api } from '../api/client';
 import { listWallets } from '../api/wallets';
-import { listPaymentsForDeal } from '../api/payments';
+import { listPaymentsForOrg } from '../api/payments';
 import type { Wallet } from '../api/wallets';
 import { BuyerRFQsView } from '../modules/buyer/BuyerRFQsView';
 import { SupplierShell } from '../modules/suppliers/SupplierShell';
@@ -31,7 +32,7 @@ import type { Payment } from '../api/payments';
 type AuthMode = 'onboarding' | 'register' | 'login' | 'app';
 type AppMode = 'buyer' | 'supplier';
 
-// Пока ещё используем демо‑поставщиков (на следующих этапах заменим на /orgs/suppliers)
+// Демо-поставщики
 const SUPPLIERS: DiscoverySupplier[] = [
   {
     id: 'shenzhen-electronics',
@@ -85,22 +86,18 @@ const App: React.FC = () => {
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [mode, setMode] = useState<AuthMode>('onboarding');
 
-  // актуальная орг‑инфо ...
   const [org, setOrg] = useState<BackendOrg | null>(null);
   const [appMode, setAppMode] = useState<AppMode>('buyer');
 
   const [active, setActive] = useState<ActiveView>('discovery');
   const [deal, setDeal] = useState<DealState>(() => createInitialDeal());
 
-  // кошелек
+  // Кошельки
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [walletsLoading, setWalletsLoading] = useState(false);
   const [walletsError, setWalletsError] = useState<string | null>(null);
 
-  const [dealPayments, setDealPayments] = useState<Payment[]>([]);
-  const [dealPaymentsLoading, setDealPaymentsLoading] = useState(false);
-  const [dealPaymentsError, setDealPaymentsError] = useState<string | null>(null);
-
+  // FIXED: Платежи организации (для Wallet Recent Activity)
   const [orgPayments, setOrgPayments] = useState<Payment[]>([]);
   const [orgPaymentsLoading, setOrgPaymentsLoading] = useState(false);
   const [orgPaymentsError, setOrgPaymentsError] = useState<string | null>(null);
@@ -146,26 +143,25 @@ const App: React.FC = () => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-    const loadOrgProfile = async (token: string) => {
-        try {
-            const data = await api<BackendOrg>('/orgs/me', {}, token);
-            setOrg(data);
-        } catch (e) {
-            console.error('Failed to fetch /orgs/me', e);
-            addToast({
-                tone: 'warn',
-                title: 'Backend access error',
-                message: 'Could not load organization profile (check API / auth).',
-            });
-        }
-    };
+  const loadOrgProfile = async (token: string) => {
+    try {
+      const data = await api<BackendOrg>('/orgs/me', {}, token);
+      setOrg(data);
+    } catch (e) {
+      console.error('Failed to fetch /orgs/me', e);
+      addToast({
+        tone: 'warn',
+        title: 'Backend access error',
+        message: 'Could not load organization profile (check API / auth).',
+      });
+    }
+  };
 
   const loadSuppliers = async (token: string) => {
     try {
       setSuppliersLoading(true);
       setSuppliersError(null);
 
-      // тип можно описать тут локально
       interface OrgFromApi {
         id: string;
         name: string;
@@ -175,13 +171,8 @@ const App: React.FC = () => {
         createdAt: string;
       }
 
-      const orgs = await api<OrgFromApi[]>(
-          '/orgs/suppliers',
-          {},
-          token,
-      );
+      const orgs = await api<OrgFromApi[]>('/orgs/suppliers', {}, token);
 
-      // Маппим Organization -> DiscoverySupplier (гибридные данные)
       const mapped: DiscoverySupplier[] = orgs.map((o, index) => {
         const isCN = o.country === 'CN';
         const baseCity = isCN ? 'Shenzhen, CN' : 'Moscow, RU';
@@ -225,22 +216,6 @@ const App: React.FC = () => {
     }
   };
 
-
-  const handleAuthSuccess = async (a: AuthState) => {
-    setAuth(a);
-    setOrg(a.org);
-    setMode('app');
-
-    // режим приложения: если чистый поставщик — supplier-консоль, иначе buyer
-    setAppMode(a.org.role === 'supplier' ? 'supplier' : 'buyer');
-
-    await saveAuthEncrypted(a);
-    void loadOrgProfile(a.tokens.accessToken);
-    void loadSuppliers(a.tokens.accessToken);
-    void loadWallets(a);
-    void loadOrgPayments(a); 
-  };
-
   const loadWallets = async (authState: AuthState) => {
     try {
       setWalletsLoading(true);
@@ -255,39 +230,51 @@ const App: React.FC = () => {
     }
   };
 
-  const loadDealPayments = async (authState: AuthState, dealState: DealState) => {
-    if (!dealState.backend?.dealId) {
-      setDealPayments([]);
-      return;
-    }
+  // FIXED: Добавлена функция loadOrgPayments
+  const loadOrgPayments = async (authState: AuthState) => {
     try {
-      setDealPaymentsLoading(true);
-      setDealPaymentsError(null);
-      const data = await listPaymentsForDeal(authState, dealState.backend.dealId);
-      setDealPayments(data);
+      setOrgPaymentsLoading(true);
+      setOrgPaymentsError(null);
+      const data = await listPaymentsForOrg(authState);
+      setOrgPayments(data);
     } catch (e) {
-      console.error('Failed to load deal payments', e);
-      setDealPaymentsError('Could not load payments for this deal');
+      console.error('Failed to load org payments', e);
+      setOrgPaymentsError('Could not load payments');
     } finally {
-      setDealPaymentsLoading(false);
+      setOrgPaymentsLoading(false);
     }
   };
 
-  const refreshFinanceState = () => {
+  // FIXED: Функция для обновления финансового состояния (вызывается после платежей)
+  const refreshFinanceState = async () => {
     if (!auth) return;
-    void loadWallets(auth);
-    void loadOrgPayments(auth);
+    await Promise.all([loadWallets(auth), loadOrgPayments(auth)]);
   };
+
+  const handleAuthSuccess = async (a: AuthState) => {
+    setAuth(a);
+    setOrg(a.org);
+    setMode('app');
+
+    setAppMode(a.org.role === 'supplier' ? 'supplier' : 'buyer');
+
+    await saveAuthEncrypted(a);
+    void loadOrgProfile(a.tokens.accessToken);
+    void loadSuppliers(a.tokens.accessToken);
+    void loadWallets(a);
+    void loadOrgPayments(a);
+  };
+
   // ===== Effects =====
 
-  // FX‑тикер, как в прототипе
+  // FX-тикер
   useEffect(() => {
     const interval = setInterval(() => {
       setDeal((d) => {
         if (d.fx.locked) {
           return { ...d, fx: { ...d.fx, tick: d.fx.tick + 1 } };
         }
-        const drift = (Math.random() - 0.5) * 0.1; // ±0.05
+        const drift = (Math.random() - 0.5) * 0.1;
         const next = clamp(d.fx.rateLive + drift, 12.6, 14.3);
         return {
           ...d,
@@ -298,7 +285,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // восстановление авторизации из sessionStorage
+  // Восстановление авторизации
   useEffect(() => {
     loadAuthEncrypted().then((stored) => {
       if (stored) {
@@ -314,34 +301,32 @@ const App: React.FC = () => {
     });
   }, []);
 
-
+  // FIXED: Обновляем платежи при смене сделки или при переходе на wallet
   useEffect(() => {
-    if (auth && deal.backend?.dealId) {
-      void loadDealPayments(auth, deal);
+    if (auth && active === 'wallet') {
+      void loadOrgPayments(auth);
+      void loadWallets(auth);
     }
-  }, [auth, deal.backend?.dealId]);
+  }, [auth, active]);
 
   // ===== Derived data =====
 
-    const suppliersFiltered = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        return suppliers
-            .filter((s) => {
-                if (filters.verified && !s.kyb) return false;
-                if (filters.exportLicense && !s.exportLicense) return false;
-                if (filters.lowMOQ && !s.lowMOQ) return false;
-
-                // если включён режим "только избранные"
-                if (showShortlistOnly && !shortlist.has(s.id)) return false;
-
-                if (!q) return true;
-                const haystack = [s.name, s.city, s.category, ...s.items]
-                    .join(' ')
-                    .toLowerCase();
-                return haystack.includes(q);
-            })
-            .sort((a, b) => b.rating - a.rating);
-    }, [filters, query, suppliers, showShortlistOnly, shortlist]);
+  const suppliersFiltered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return suppliers
+      .filter((s) => {
+        if (filters.verified && !s.kyb) return false;
+        if (filters.exportLicense && !s.exportLicense) return false;
+        if (filters.lowMOQ && !s.lowMOQ) return false;
+        if (showShortlistOnly && !shortlist.has(s.id)) return false;
+        if (!q) return true;
+        const haystack = [s.name, s.city, s.category, ...s.items]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(q);
+      })
+      .sort((a, b) => b.rating - a.rating);
+  }, [filters, query, suppliers, showShortlistOnly, shortlist]);
 
   // ===== Handlers для Discovery/Deal =====
 
@@ -536,11 +521,11 @@ const App: React.FC = () => {
               error={suppliersError}
               showShortlistOnly={showShortlistOnly}
               setShowShortlistOnly={setShowShortlistOnly}
+              addToast={addToast}
             />
           ) : active === 'rfqs' ? (
             <BuyerRFQsView
               auth={auth!}
-              deal={deal}
               setDeal={setDeal}
               addToast={addToast}
               prefillSupplierOrgId={pendingRfqSupplier?.id ?? null}
@@ -555,6 +540,7 @@ const App: React.FC = () => {
               addToast={addToast}
               onGoLogistics={() => setActive('logistics')}
               auth={auth!}
+              onPaymentCreated={refreshFinanceState}
             />
           ) : active === 'logistics' ? (
             <LogisticsView
@@ -562,6 +548,7 @@ const App: React.FC = () => {
               setDeal={setDeal}
               addToast={addToast}
               auth={auth!}
+              onFinanceUpdate={refreshFinanceState}
             />
           ) : active === 'wallet' ? (
             <WalletView
@@ -581,8 +568,7 @@ const App: React.FC = () => {
 
         <footer className="px-6 pb-6 text-xs text-slate-400">
           SilkFlow prototype — React + Vite + Tailwind. Discovery / Deal Workspace /
-          Logistics / Wallet / Documents + Supplier Profile Drawer перенесены из
-          high‑fidelity прототипа.
+          Logistics / Wallet / Documents + Supplier Profile Drawer.
         </footer>
       </div>
 

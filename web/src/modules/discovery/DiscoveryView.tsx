@@ -1,6 +1,7 @@
 import React from 'react';
 import { Badge } from '../../components/common/Badge';
 import { Icon } from '../../components/common/Icon';
+import type { Toast } from '../../components/common/ToastStack';
 
 export interface DiscoverySupplier {
   id: string;
@@ -34,6 +35,7 @@ interface DiscoveryViewProps {
   onOpenProfile: (s: DiscoverySupplier) => void;
   showShortlistOnly: boolean;
   setShowShortlistOnly: React.Dispatch<React.SetStateAction<boolean>>;
+  addToast?: (t: Omit<Toast, 'id'>) => void;
 
   // новые пропсы
   loading?: boolean;
@@ -274,6 +276,25 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                       </div>
                       <div className="mt-2 text-xs text-slate-500">
                         Common items: {s.items.join(', ')}
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-[11px] text-slate-400 sf-number">
+                            ID: {s.id}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(s.id);
+                              addToast?.({
+                                tone: 'info',
+                                title: 'ID скопирован',
+                                message: `${s.id.slice(0, 12)}… в буфере обмена.`,
+                              });
+                            }}
+                            className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold"
+                          >
+                            Копировать
+                          </button>
+                        </div>
                       </div>
                     </div>
 

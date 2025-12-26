@@ -1,40 +1,17 @@
 // src/modules/documents/DocumentsView.tsx
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { DealState } from '../../state/dealTypes';
 import type { AuthState } from '../../state/authTypes';
 import { Badge } from '../../components/common/Badge';
 import { Icon } from '../../components/common/Icon';
-import { fmt } from '../../components/lib/format';
 import type { Toast } from '../../components/common/ToastStack';
-import { listDealDocuments } from '../../api/documents';
-
-type DocStageId = 'discovery' | 'deal' | 'logistics';
-
-type DocType = 'contract' | 'invoice' | 'packing' | 'customs' | 'video' | 'rfq';
-
-type DocStatus =
-  | 'Draft'
-  | 'Signed'
-  | 'Processed'
-  | 'Uploaded'
-  | 'Pending'
-  | 'In Review'
-  | 'Archived';
-
-type DocStatusTone = 'gray' | 'green' | 'orange' | 'blue';
-
-interface DealDocumentUI {
-  id: string;
-  type: DocType;
-  typeLabel: string;
-  name: string;
-  stage: string;
-  stageId: DocStageId;
-  date: string;
-  status: DocStatus;
-  statusTone: DocStatusTone;
-  description: string;
-}
+import {
+  listDealDocuments,
+  createDealDocument,
+  type Document as BackendDocument,
+  type DocumentType,
+} from '../../api/documents';
+import { createDummyFile } from '../../api/files';
 
 interface DocumentsViewProps {
   deal: DealState;
@@ -42,47 +19,128 @@ interface DocumentsViewProps {
   auth: AuthState;
 }
 
-// Маппинг типов из API в DocType
-function mapDocumentType(apiType: string): DocType {
-  switch (apiType) {
+// Категория для UI-вкладок
+type DocCategory = 'all' | 'legal' | 'financial' | 'logistics';
+
+// Этап для чек-листа
+type DocStage = 'deal' | 'finance' | 'logistics';
+
+// Конфигурация обязательных документов по сделке
+interface RequiredDoc {
+  id: string;
+  type: DocumentType;
+  label: string;
+  stage: DocStage;
+  optional?: boolean;
+  hint?: string;
+}
+
+const REQUIRED_DOCS: RequiredDoc[] = [
+  {
+    id: 'contract',
+    type: 'contract',
+    label: 'Контракт поставки',
+    stage: 'deal',
+    hint: 'Основной договор между вами и поставщиком',
+  },
+  {
+    id: 'invoice',
+    type: 'invoice',
+    label: 'Коммерческий инвойс',
+    stage: 'finance',
+    hint: 'Основа для таможни и оплат',
+  },
+  {
+    id: 'packing_list',
+    type: 'packing_list',
+    label: 'Packing List',
+    stage: 'logistics',
+    hint: 'Содержимое коробок, количество мест и вес',
+  },
+  {
+    id: 'spec',
+    type: 'specification',
+    label: 'Спецификация',
+    stage: 'deal',
+    optional: true,
+    hint: 'Подробные характеристики товара',
+  },
+];
+
+type DocStatus = 'uploaded' | 'missing';
+
+// Подсказка
+const HelpTip: React.FC<{ title: string; children: React.ReactNode }> = ({
+  title,
+  children,
+}) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative inline-block ml-1">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        className="w-4 h-4 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 grid place-items-center text-[10px] font-bold transition"
+      >
+        ?
+      </button>
+      {open && (
+        <div className="absolute z-50 left-5 top-0 w-72 rounded-xl border border-slate-200 bg-white shadow-lg p-3 sf-fade-in">
+          <div className="text-xs font-bold text-slate-900 mb-1">{title}</div>
+          <div className="text-xs text-slate-600 leading-relaxed">{children}</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Маппинг типа документа в UI-метаданные
+function mapTypeToCategory(type: DocumentType): DocCategory {
+  switch (type) {
     case 'contract':
-      return 'contract';
+    case 'purchase_order':
+    case 'specification':
+      return 'legal';
     case 'invoice':
-      return 'invoice';
+      return 'financial';
     case 'packing_list':
-      return 'packing';
-    case 'customs_declaration':
-      return 'customs';
+      return 'logistics';
     default:
-      return 'customs'; // fallback
+      return 'all';
   }
 }
 
-function mapDocumentLabel(apiType: string): string {
-  switch (apiType) {
+function mapTypeToLabel(type: DocumentType): string {
+  switch (type) {
     case 'contract':
-      return 'Contract';
+      return 'Контракт';
+    case 'purchase_order':
+      return 'Purchase Order';
     case 'invoice':
-      return 'Commercial Invoice';
+      return 'Инвойс';
     case 'packing_list':
       return 'Packing List';
-    case 'customs_declaration':
-      return 'Customs Document';
+    case 'specification':
+      return 'Спецификация';
+    case 'other':
     default:
-      return 'Document';
+      return 'Документ';
   }
 }
 
-function DocIcon({ type, className = '' }: { type: DocType; className?: string }) {
-  const map: Record<DocType, 'docs' | 'wallet' | 'truck' | 'shield' | 'play'> = {
-    contract: 'docs',
-    invoice: 'wallet',
-    packing: 'truck',
-    customs: 'shield',
-    video: 'play',
-    rfq: 'docs',
-  };
-  return <Icon name={map[type]} className={className} />;
+function getIconForType(type: DocumentType) {
+  switch (type) {
+    case 'contract':
+      return <Icon name="docs" className="w-5 h-5 text-blue-600" />;
+    case 'invoice':
+      return <Icon name="wallet" className="w-5 h-5 text-emerald-600" />;
+    case 'packing_list':
+      return <Icon name="truck" className="w-5 h-5 text-orange-600" />;
+    case 'specification':
+      return <Icon name="docs" className="w-5 h-5 text-slate-700" />;
+    default:
+      return <Icon name="paperclip" className="w-5 h-5 text-slate-500" />;
+  }
 }
 
 export const DocumentsView: React.FC<DocumentsViewProps> = ({
@@ -90,590 +148,390 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   addToast,
   auth,
 }) => {
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewDoc, setPreviewDoc] = useState<DealDocumentUI | null>(null);
-  const [stageFilter, setStageFilter] = useState<'all' | DocStageId>('all');
+  const [category, setCategory] = useState<DocCategory>('all');
 
-  const [backendDocs, setBackendDocs] = useState<DealDocumentUI[]>([]);
-  const [loadingBackend, setLoadingBackend] = useState(false);
+  const [backendDocs, setBackendDocs] = useState<BackendDocument[]>([]);
+  const [loading, setLoading] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
 
-  const dealId = useMemo(() => {
-    const s = (deal.supplier?.id || 'sf').slice(0, 6).toUpperCase();
-    return `SF-${s}-0142`;
-  }, [deal.supplier?.id]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [creatingFor, setCreatingFor] = useState<string | null>(null);
 
-  // Демо-документы, завязанные на состоянии сделки
-  const demoDocuments: DealDocumentUI[] = useMemo(() => {
-    const isSigned = deal.stage !== 'Draft';
-    const escrowFunded =
-      deal.payment.status === 'Escrow Funded' ||
-      deal.payment.status === 'Funds Released';
-    const isShipped = deal.stage === 'Shipped';
-    const delivered = deal.logistics.delivered;
+  const dealId = deal.backend?.dealId ?? null;
 
-    return [
-      {
-        id: 'contract-1',
-        type: 'contract',
-        typeLabel: 'Contract',
-        name: `Contract_${dealId}.pdf`,
-        stage: 'Negotiation & Payment',
-        stageId: 'deal',
-        date: '2025-01-12',
-        status: isSigned ? 'Signed' : 'Draft',
-        statusTone: isSigned ? 'green' : 'gray',
-        description:
-          'RFQ/Purchase agreement between buyer and supplier. Contains terms, pricing, quantity, and Incoterms.',
-      },
-      {
-        id: 'invoice-1',
-        type: 'invoice',
-        typeLabel: 'Commercial Invoice',
-        name: `Invoice_${dealId}.pdf`,
-        stage: 'Negotiation & Payment',
-        stageId: 'deal',
-        date: '2025-01-13',
-        status: escrowFunded ? 'Processed' : 'Pending',
-        statusTone: escrowFunded ? 'green' : 'orange',
-        description:
-          'Commercial invoice for customs declaration. Lists goods, quantities, prices in CNY and RUB.',
-      },
-      {
-        id: 'packing-1',
-        type: 'packing',
-        typeLabel: 'Packing List',
-        name: `PackingList_${dealId}.pdf`,
-        stage: 'Logistics & Execution',
-        stageId: 'logistics',
-        date: '2025-01-14',
-        status: isShipped ? 'Uploaded' : 'Pending',
-        statusTone: isShipped ? 'green' : 'orange',
-        description:
-          'Detailed list of package contents, weights, dimensions, and carton numbers for customs and warehouse.',
-      },
-      {
-        id: 'customs-1',
-        type: 'customs',
-        typeLabel: 'Customs Declaration',
-        name: `CustomsDecl_${dealId}.pdf`,
-        stage: 'Logistics & Execution',
-        stageId: 'logistics',
-        date: '2025-01-15',
-        status: delivered ? 'Processed' : isShipped ? 'In Review' : 'Pending',
-        statusTone: delivered ? 'green' : isShipped ? 'blue' : 'orange',
-        description: `HS code ${
-          deal.calc.hs.code
-        } declaration. Includes duty (${fmt.pct(
-          deal.calc.hs.duty,
-        )}) and VAT (${fmt.pct(deal.calc.hs.vat)}) calculation.`,
-      },
-      {
-        id: 'video-1',
-        type: 'video',
-        typeLabel: 'Acceptance Proof',
-        name: `AcceptanceVideo_${dealId}.mp4`,
-        stage: 'Logistics & Execution',
-        stageId: 'logistics',
-        date: '2025-01-16',
-        status: 'Uploaded',
-        statusTone: 'green',
-        description:
-          'Video inspection from warehouse showing sealed cartons, quantity check, and random sample inspection.',
-      },
-      {
-        id: 'rfq-1',
-        type: 'rfq',
-        typeLabel: 'RFQ Draft',
-        name: `RFQ_Draft_${dealId}.pdf`,
-        stage: 'Discovery',
-        stageId: 'discovery',
-        date: '2025-01-10',
-        status: 'Archived',
-        statusTone: 'gray',
-        description:
-          'Initial Request for Quotation sent to supplier. Superseded by signed contract.',
-      },
-    ];
-  }, [deal, dealId]);
+  // Загрузка документов с бэкенда
+  useEffect(() => {
+    const load = async () => {
+      if (!dealId) return;
+      try {
+        setLoading(true);
+        setBackendError(null);
+        const docs = await listDealDocuments(auth, dealId);
+        setBackendDocs(docs);
+      } catch (e) {
+        console.error('Failed to load deal documents', e);
+        setBackendError('Не удалось загрузить документы с сервера.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, [auth, dealId]);
 
-  // Все документы: сначала backend, потом демо
-  const allDocuments = useMemo(
-    () => [...backendDocs, ...demoDocuments],
-    [backendDocs, demoDocuments],
+  // Проверка наличия документа определённого типа
+  const hasDocOfType = (type: DocumentType): boolean =>
+    backendDocs.some((d) => d.type === type);
+
+  // Чек-лист
+  const checklist = useMemo(
+    () =>
+      REQUIRED_DOCS.map((req) => {
+        const present = hasDocOfType(req.type);
+        const status: DocStatus = present ? 'uploaded' : 'missing';
+        return { ...req, status };
+      }),
+    [backendDocs],
   );
 
+  // Фильтрация для таблицы
   const filteredDocs = useMemo(() => {
-    if (stageFilter === 'all') return allDocuments;
-    return allDocuments.filter((d) => d.stageId === stageFilter);
-  }, [allDocuments, stageFilter]);
+    if (category === 'all') return backendDocs;
+    return backendDocs.filter((d) => mapTypeToCategory(d.type) === category);
+  }, [backendDocs, category]);
 
-  const stages = [
-    { id: 'all' as const, label: 'All Documents' },
-    { id: 'discovery' as const, label: '1. Discovery' },
-    { id: 'deal' as const, label: '2. Negotiation & Payment' },
-    { id: 'logistics' as const, label: '3. Logistics & Execution' },
-  ];
+  // Создание демо-документа (через dummy-файл и /documents)
+  const handleCreateDemoDoc = async (req: RequiredDoc) => {
+    if (!dealId) {
+      addToast({
+        tone: 'warn',
+        title: 'Нет привязки к сделке',
+        message: 'Создайте и привяжите сделку, прежде чем загружать документы.',
+      });
+      return;
+    }
 
-  const openPreview = (doc: DealDocumentUI) => {
-    setPreviewDoc(doc);
-    setPreviewOpen(true);
+    try {
+      setCreatingFor(req.id);
+      // 1. Создаём dummy-файл на бэке (/files)
+      const file = await createDummyFile();
+      // 2. Создаём документ для сделки
+      const created = await createDealDocument(auth, dealId, {
+        type: req.type,
+        title: req.label,
+        fileId: file.id,
+      });
+
+      setBackendDocs((prev) => [...prev, created]);
+      addToast({
+        tone: 'success',
+        title: `${req.label} создан`,
+        message: 'Документ добавлен к сделке (демо-режим).',
+      });
+    } catch (e) {
+      console.error('Failed to create demo doc', e);
+      addToast({
+        tone: 'warn',
+        title: 'Ошибка создания документа',
+        message: 'Не удалось создать документ. Проверьте подключение.',
+      });
+    } finally {
+      setCreatingFor(null);
+    }
   };
 
-  const handleDownload = (doc: DealDocumentUI) => {
+  // Drag & Drop (пока демо)
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
     addToast({
       tone: 'info',
-      title: 'Download simulated',
-      message: `${doc.name} would be downloaded in production.`,
+      title: 'Загрузка документа (демо)',
+      message:
+        'В продакшене здесь откроется диалог выбора типа документа и загрузка на сервер.',
     });
   };
 
-  // Загружаем backend-документы
-  useEffect(() => {
-    const load = async () => {
-      if (!deal.backend?.dealId) return;
-
-      try {
-        setLoadingBackend(true);
-        setBackendError(null);
-
-        const docs = await listDealDocuments(auth, deal.backend.dealId);
-
-        const mapped: DealDocumentUI[] = docs.map((d) => ({
-          id: d.id,
-          type: mapDocumentType(d.type),
-          typeLabel: mapDocumentLabel(d.type),
-          name: d.title || `${d.type}_${d.id}.pdf`,
-          stage: 'Negotiation & Payment',
-          stageId: 'deal',
-          date: d.createdAt.slice(0, 10),
-          status: 'Processed',
-          statusTone: 'green',
-          description: `Backend document of type ${d.type} linked to deal.`,
-        }));
-
-        setBackendDocs(mapped);
-      } catch (e) {
-        console.error('Failed to load backend documents', e);
-        setBackendError('Could not load documents from backend');
-      } finally {
-        setLoadingBackend(false);
-      }
-    };
-
-    void load();
-  }, [auth, deal.backend?.dealId]);
+  const totalRequired = REQUIRED_DOCS.filter((d) => !d.optional).length;
+  const uploadedRequired = checklist.filter(
+    (d) => !d.optional && d.status === 'uploaded',
+  ).length;
 
   return (
-    <div className="p-6">
-      {/* Header */}
+    <div className="p-6 space-y-6">
+      {/* ===== HEADER ===== */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-slate-900 text-xl font-bold">Documents</div>
-          <div className="mt-1 text-sm text-slate-600">
-            Archive of contracts, invoices, customs docs, and proof of delivery for
-            deal{' '}
-            <span className="font-semibold text-slate-900 sf-number">{dealId}</span>.
-          </div>
-          {loadingBackend ? (
-            <div className="mt-1 text-xs text-blue-600">
-              Loading documents from backend…
-            </div>
-          ) : backendError ? (
-            <div className="mt-1 text-xs text-orange-700">{backendError}</div>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() =>
-              addToast({
-                tone: 'info',
-                title: 'Export all',
-                message:
-                  'In production, this would generate a ZIP with all documents for your accountant.',
-              })
-            }
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-          >
-            <Icon name="docs" className="w-4 h-4" />
-            Export All
-          </button>
-        </div>
-      </div>
-
-      {/* Stage Filter Tabs */}
-      <div className="mt-5 sf-card rounded-2xl border border-slate-200 bg-white p-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {stages.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setStageFilter(s.id)}
-              className={
-                'rounded-xl px-3 py-2 text-sm font-semibold transition ring-1 ring-inset ' +
-                (stageFilter === s.id
-                  ? 'bg-blue-50 text-blue-900 ring-blue-200'
-                  : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50')
-              }
+          <div className="flex items-center gap-2">
+            <div className="text-slate-900 text-xl font-bold">Документооборот</div>
+            <Badge
+              tone="green"
+              icon={<Icon name="shield" className="w-4 h-4" />}
             >
-              {s.label}
-            </button>
-          ))}
-          <div className="ml-auto text-xs text-slate-500">
-            Showing{' '}
-            <span className="font-semibold text-slate-700">
-              {filteredDocs.length}
-            </span>{' '}
-            document{filteredDocs.length !== 1 ? 's' : ''}
+              Secure Vault
+            </Badge>
           </div>
-        </div>
-      </div>
-
-      {/* Documents Table */}
-      <div className="mt-4 sf-card rounded-2xl border border-slate-200 bg-white overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">
-                  Type
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">
-                  Name
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">
-                  Stage
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">
-                  Date
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">
-                  Status
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-600">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredDocs.map((doc, i) => (
-                <tr
-                  key={doc.id}
-                  className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={
-                          'w-8 h-8 rounded-lg grid place-items-center ' +
-                          (doc.type === 'contract'
-                            ? 'bg-blue-50 text-blue-700'
-                            : doc.type === 'invoice'
-                            ? 'bg-teal-50 text-teal-700'
-                            : doc.type === 'packing'
-                            ? 'bg-orange-50 text-orange-700'
-                            : doc.type === 'customs'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : doc.type === 'video'
-                            ? 'bg-purple-50 text-purple-700'
-                            : 'bg-slate-50 text-slate-700')
-                        }
-                      >
-                        <DocIcon type={doc.type} className="w-4 h-4" />
-                      </div>
-                      <span className="font-medium text-slate-900">
-                        {doc.typeLabel}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-slate-900 font-medium sf-number">
-                      {doc.name}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={
-                        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ' +
-                        (doc.stageId === 'discovery'
-                          ? 'bg-slate-100 text-slate-700'
-                          : doc.stageId === 'deal'
-                          ? 'bg-blue-50 text-blue-800'
-                          : 'bg-teal-50 text-teal-800')
-                      }
-                    >
-                      {doc.stage}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-700 sf-number">
-                    {doc.date}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge
-                      tone={doc.statusTone}
-                      icon={
-                        doc.status === 'Signed' ||
-                        doc.status === 'Processed' ||
-                        doc.status === 'Uploaded' ? (
-                          <Icon name="check" className="w-4 h-4" />
-                        ) : doc.status === 'In Review' ? (
-                          <Icon name="clock" className="w-4 h-4" />
-                        ) : undefined
-                      }
-                    >
-                      {doc.status}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => openPreview(doc)}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        View
-                      </button>
-                      <button
-                        onClick={() => handleDownload(doc)}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        Download
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {filteredDocs.length === 0 ? (
-          <div className="px-4 py-8 text-center">
-            <div className="text-slate-400 mb-2">
-              <Icon name="docs" className="w-8 h-8 mx-auto" />
-            </div>
-            <div className="text-sm text-slate-600">
-              No documents in this stage yet.
-            </div>
+          <div className="mt-1 text-sm text-slate-600">
+            Все ключевые документы по сделке в одном защищённом хранилище.
           </div>
-        ) : null}
-
-        <div className="px-4 py-3 border-t border-slate-200 bg-slate-50">
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-slate-500">
-              Documents are auto-archived and versioned by SilkFlow.
-            </div>
-            <div className="text-xs text-slate-500">
-              Deal:{' '}
-              <span className="font-semibold text-slate-700 sf-number">
-                {dealId}
+          {dealId ? (
+            <div className="mt-1 text-xs text-slate-500">
+              ID сделки:{' '}
+              <span className="font-mono sf-number text-slate-700">
+                {dealId.slice(0, 12)}…
               </span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div className="sf-card rounded-xl border border-slate-200 bg-white p-3">
-          <div className="text-xs font-semibold text-slate-600">
-            Total Documents
-          </div>
-          <div className="mt-1 text-lg font-extrabold text-slate-900 sf-number">
-            {allDocuments.length}
-          </div>
-        </div>
-        <div className="sf-card rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-          <div className="text-xs font-semibold text-emerald-700">
-            Signed / Processed
-          </div>
-          <div className="mt-1 text-lg font-extrabold text-emerald-900 sf-number">
-            {
-              allDocuments.filter((d) =>
-                ['Signed', 'Processed', 'Uploaded'].includes(d.status),
-              ).length
-            }
-          </div>
-        </div>
-        <div className="sf-card rounded-xl border border-orange-200 bg-orange-50 p-3">
-          <div className="text-xs font-semibold text-orange-700">Pending</div>
-          <div className="mt-1 text-lg font-extrabold text-orange-900 sf-number">
-            {allDocuments.filter((d) => d.status === 'Pending').length}
-          </div>
-        </div>
-        <div className="sf-card rounded-xl border border-blue-200 bg-blue-50 p-3">
-          <div className="text-xs font-semibold text-blue-700">In Review</div>
-          <div className="mt-1 text-lg font-extrabold text-blue-900 sf-number">
-            {allDocuments.filter((d) => d.status === 'In Review').length}
-          </div>
-        </div>
-      </div>
-
-      {/* Info Box */}
-      <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <div className="flex items-start gap-3">
-          <div className="text-blue-700 mt-0.5">
-            <Icon name="spark" />
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-blue-900">
-              One-click export for compliance
+          ) : (
+            <div className="mt-1 text-xs text-orange-700">
+              Сделка не привязана — документы будут только демонстрационными.
             </div>
-            <div className="mt-1 text-xs text-blue-800">
-              In production, all documents are stored with audit trails. Export a
-              complete package for your accountant, bank, or customs broker with a
-              single click.
+          )}
+          {loading && (
+            <div className="mt-1 text-xs text-blue-600">
+              Загрузка документов с сервера…
             </div>
-          </div>
+          )}
+          {backendError && (
+            <div className="mt-1 text-xs text-orange-700">{backendError}</div>
+          )}
         </div>
-      </div>
-
-      {/* Document Preview Modal */}
-      {previewOpen && previewDoc ? (
-        <div
-          className="fixed inset-0 z-50 bg-slate-900/50 grid place-items-center p-4"
-          onClick={() => setPreviewOpen(false)}
+        <button
+          onClick={() =>
+            addToast({
+              tone: 'info',
+              title: 'Экспорт архива',
+              message: 'В продакшене здесь будет ZIP-архив со всеми документами.',
+            })
+          }
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
         >
-          <div
-            className="w-full max-w-2xl rounded-2xl bg-white border border-slate-200 sf-card overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className={
-                    'w-10 h-10 rounded-xl grid place-items-center ' +
-                    (previewDoc.type === 'contract'
-                      ? 'bg-blue-50 text-blue-700'
-                      : previewDoc.type === 'invoice'
-                      ? 'bg-teal-50 text-teal-700'
-                      : previewDoc.type === 'packing'
-                      ? 'bg-orange-50 text-orange-700'
-                      : previewDoc.type === 'customs'
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : previewDoc.type === 'video'
-                      ? 'bg-purple-50 text-purple-700'
-                      : 'bg-slate-50 text-slate-700')
-                  }
-                >
-                  <DocIcon type={previewDoc.type} className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-base font-bold text-slate-900">
-                    Document Preview
-                  </div>
-                  <div className="text-xs text-slate-600">
-                    {previewDoc.typeLabel}
-                  </div>
-                </div>
-              </div>
-              <button
-                className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                onClick={() => setPreviewOpen(false)}
-              >
-                <Icon name="x" />
-              </button>
-            </div>
-            <div className="p-5">
-              {/* Document info */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 mb-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-xs font-semibold text-slate-600">
-                      File Name
-                    </div>
-                    <div className="mt-1 text-sm font-bold text-slate-900 sf-number">
-                      {previewDoc.name}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-600">
-                      Status
-                    </div>
-                    <div className="mt-1">
-                      <Badge tone={previewDoc.statusTone}>
-                        {previewDoc.status}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-600">
-                      Stage
-                    </div>
-                    <div className="mt-1 text-sm text-slate-900">
-                      {previewDoc.stage}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-600">
-                      Date
-                    </div>
-                    <div className="mt-1 text-sm text-slate-900 sf-number">
-                      {previewDoc.date}
-                    </div>
-                  </div>
-                </div>
-              </div>
+          <Icon name="docs" className="w-4 h-4" />
+          Скачать всё
+        </button>
+      </div>
 
-              {/* Preview placeholder */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-100 h-64 grid place-items-center relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-900/10 via-slate-900/5 to-teal-600/10" />
-                <div className="absolute inset-0 sf-grid-bg opacity-40" />
-                <div className="text-center relative z-10">
-                  <div
+      {/* ===== CHECKLIST ===== */}
+      <div className="sf-card rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-bold text-slate-900">
+              Чек‑лист по сделке
+            </div>
+            <HelpTip title="Обязательные документы">
+              Эти документы обычно требуют банк, бухгалтерия и таможня.
+              Загружайте их по мере прохождения сделки.
+            </HelpTip>
+          </div>
+          <div className="text-xs text-slate-500">
+            Готово{' '}
+            <span className="font-semibold text-slate-900">
+              {uploadedRequired}/{totalRequired}
+            </span>{' '}
+            обязательных документов
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {checklist.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-start gap-3"
+            >
+              <div
+                className={
+                  'w-8 h-8 rounded-xl grid place-items-center ' +
+                  (item.status === 'uploaded'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-slate-100 text-slate-400')
+                }
+              >
+                {item.status === 'uploaded' ? (
+                  <Icon name="check" className="w-4 h-4" />
+                ) : (
+                  <Icon name="docs" className="w-4 h-4" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-900">
+                    {item.label}
+                  </span>
+                  {item.optional && (
+                    <Badge tone="gray" className="text-[10px]">
+                      Опционально
+                    </Badge>
+                  )}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500">
+                  Этап:{' '}
+                  {item.stage === 'deal'
+                    ? 'Сделка'
+                    : item.stage === 'finance'
+                    ? 'Финансы'
+                    : 'Логистика'}
+                </div>
+                {item.hint && (
+                  <div className="mt-0.5 text-[11px] text-slate-500">
+                    {item.hint}
+                  </div>
+                )}
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                <Badge
+                  tone={item.status === 'uploaded' ? 'green' : 'orange'}
+                  className="text-[10px]"
+                >
+                  {item.status === 'uploaded' ? 'Готово' : 'Не загружен'}
+                </Badge>
+                {item.status === 'missing' && (
+                  <button
+                    disabled={creatingFor === item.id || !dealId}
+                    onClick={() => void handleCreateDemoDoc(item)}
                     className={
-                      'mx-auto w-16 h-16 rounded-2xl grid place-items-center ring-4 ' +
-                      (previewDoc.type === 'contract'
-                        ? 'bg-blue-100 text-blue-700 ring-blue-50'
-                        : previewDoc.type === 'invoice'
-                        ? 'bg-teal-100 text-teal-700 ring-teal-50'
-                        : previewDoc.type === 'packing'
-                        ? 'bg-orange-100 text-orange-700 ring-orange-50'
-                        : previewDoc.type === 'customs'
-                        ? 'bg-emerald-100 text-emerald-700 ring-emerald-50'
-                        : previewDoc.type === 'video'
-                        ? 'bg-purple-100 text-purple-700 ring-purple-50'
-                        : 'bg-slate-100 text-slate-700 ring-slate-50')
+                      'mt-1 rounded-lg px-2 py-1 text-[11px] font-semibold ' +
+                      (dealId
+                        ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        : 'border border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed')
                     }
                   >
-                    <DocIcon type={previewDoc.type} className="w-8 h-8" />
+                    {creatingFor === item.id ? 'Создание…' : 'Добавить (демо)'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ===== UPLOAD ZONE ===== */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() =>
+          addToast({
+            tone: 'info',
+            title: 'Загрузка документа (демо)',
+            message:
+              'В продакшене здесь будет диалог выбора файла и типа документа.',
+          })
+        }
+        className={
+          'rounded-2xl border-2 border-dashed transition-all p-8 text-center cursor-pointer ' +
+          (isDragging
+            ? 'border-blue-500 bg-blue-50 scale-[1.01]'
+            : 'border-slate-300 bg-slate-50 hover:bg-slate-100 hover:border-slate-400')
+        }
+      >
+        <div className="mx-auto w-12 h-12 rounded-full bg-white border border-slate-200 grid place-items-center mb-3 shadow-sm">
+          <Icon name="paperclip" className="w-6 h-6 text-slate-400" />
+        </div>
+        <div className="text-sm font-semibold text-slate-900">
+          Нажмите или перетащите файл сюда
+        </div>
+        <div className="mt-1 text-xs text-slate-500">
+          Поддерживаются PDF / JPG / PNG до 25 MB
+        </div>
+      </div>
+
+      {/* ===== TABS (CATEGORIES) ===== */}
+      <div className="border-b border-slate-200 flex gap-6">
+        {[
+          { id: 'all', label: 'Все документы' },
+          { id: 'legal', label: 'Юридические' },
+          { id: 'financial', label: 'Финансовые' },
+          { id: 'logistics', label: 'Логистика' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setCategory(tab.id as DocCategory)}
+            className={
+              'pb-3 text-sm font-semibold border-b-2 transition ' +
+              (category === tab.id
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700')
+            }
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ===== DOCUMENTS TABLE ===== */}
+      <div className="sf-card rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div className="text-sm font-bold text-slate-900">
+            Документы ({filteredDocs.length})
+          </div>
+          {loading && (
+            <div className="text-xs text-blue-600">Обновление списка…</div>
+          )}
+        </div>
+
+        <div className="divide-y divide-slate-100">
+          {filteredDocs.map((doc) => (
+            <div
+              key={doc.id}
+              className="p-4 flex items-center justify-between hover:bg-slate-50 transition"
+            >
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-slate-50 grid place-items-center shrink-0 border border-slate-100">
+                  {getIconForType(doc.type)}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-slate-900 truncate">
+                    {doc.title || mapTypeToLabel(doc.type)}
                   </div>
-                  <div className="mt-4 text-sm font-semibold text-slate-900">
-                    {previewDoc.typeLabel}
-                  </div>
-                  <div className="mt-1 text-xs text-slate-600 max-w-sm mx-auto">
-                    This is a prototype preview. In a real product, the actual{' '}
-                    {previewDoc.type === 'video' ? 'video' : 'PDF'} would be
-                    displayed here.
+                  <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500">
+                    <span className="sf-number">
+                      {doc.createdAt.slice(0, 10)}
+                    </span>
+                    <span className="w-1 h-1 rounded-full bg-slate-300" />
+                    <span className="sf-number">
+                      fileId: {doc.fileId.slice(0, 8)}…
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Description */}
-              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-                <div className="text-xs font-semibold text-slate-700">
-                  Description
-                </div>
-                <div className="mt-1 text-sm text-slate-600">
-                  {previewDoc.description}
-                </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <Badge tone="green" className="text-[10px]">
+                  Загружен
+                </Badge>
+                <button
+                  onClick={() =>
+                    addToast({
+                      tone: 'info',
+                      title: 'Скачивание (демо)',
+                      message:
+                        'В реальном продукте здесь начнётся скачивание файла.',
+                    })
+                  }
+                  className="p-2 text-slate-400 hover:text-blue-600 transition rounded-lg hover:bg-blue-50"
+                  title="Скачать"
+                >
+                  <Icon name="docs" className="w-5 h-5" />
+                </button>
               </div>
             </div>
-            <div className="px-5 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
-              <button
-                onClick={() => handleDownload(previewDoc)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-              >
-                Download
-              </button>
-              <button
-                onClick={() => setPreviewOpen(false)}
-                className="rounded-xl bg-[var(--sf-blue-900)] text-white px-4 py-2 text-sm font-semibold hover:bg-[var(--sf-blue-800)]"
-              >
-                Close
-              </button>
+          ))}
+
+          {filteredDocs.length === 0 && !loading && (
+            <div className="p-8 text-center text-slate-500 text-sm">
+              В этой категории пока нет документов.
             </div>
-          </div>
+          )}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 };
